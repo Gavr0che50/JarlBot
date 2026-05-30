@@ -1,4 +1,4 @@
-# 🤖 JarlBot V1.3
+# 🤖 JarlBot V1.4
 
 Bot Discord de gestion de **défis d'équipes** et de **sessions spéciales** pour communautés EVA.
 
@@ -28,7 +28,9 @@ Création automatique de **salons privés**, **événements Discord**, **rappels
 - Salon privé + rappel MP 48h avant
 
 ### 🛠️ Outils admin
-- **`/renfort`** — Inviter des renforts dans un salon privé
+- **`/renfort`** — Inviter un renfort dans un salon privé, avec une équipe cible pour les scrims
+- **`/resultat`** — Consulter ton bilan de scrims et tes participations par type
+- **`/planning`** — Lister les matchs/événements Discord à venir sur 7 jours
 - **`/cleanup`** — Supprimer tous les salons, événements et données du bot
 - **`/ping`** — Vérifier que le bot répond
 
