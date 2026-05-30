@@ -263,6 +263,7 @@ async function creerSalonPrive(guild, defi) {
 }
 
 async function creerSalonPriveSession(guild, session) {
+  const botId = client.user?.id || guild.client?.user?.id;
   const permissionsParticipants = session.participants.map(userId => ({
     id: userId,
     allow: [
@@ -272,6 +273,25 @@ async function creerSalonPriveSession(guild, session) {
     ],
   }));
 
+  const overwrites = [
+    {
+      id: guild.roles.everyone.id,
+      deny: [PermissionFlagsBits.ViewChannel],
+    },
+    ...permissionsParticipants,
+  ];
+
+  if (botId) {
+    overwrites.push({
+      id: botId,
+      allow: [
+        PermissionFlagsBits.ViewChannel,
+        PermissionFlagsBits.SendMessages,
+        PermissionFlagsBits.ReadMessageHistory,
+      ],
+    });
+  }
+
   return guild.channels.create({
     name: genererNomSalonSession(session),
     type: ChannelType.GuildText,
@@ -279,13 +299,7 @@ async function creerSalonPriveSession(guild, session) {
     // On peut réutiliser la catégorie "Défis" pour le moment
     parent: process.env.CATEGORIE_DEFIS_ID,
 
-    permissionOverwrites: [
-      {
-        id: guild.roles.everyone.id,
-        deny: [PermissionFlagsBits.ViewChannel],
-      },
-      ...permissionsParticipants,
-    ],
+    permissionOverwrites: overwrites,
   });
 }
 
@@ -571,7 +585,14 @@ async function gererBoutonSession(interaction) {
   } catch (err) {
     console.error('❌ Erreur validation session :', err);
 
-    return interaction.reply({
+    if (!interaction.replied) {
+      return interaction.reply({
+        content: '❌ Impossible de créer le salon privé de session.',
+        ephemeral: true,
+      });
+    }
+
+    return interaction.followUp({
       content: '❌ Impossible de créer le salon privé de session.',
       ephemeral: true,
     });
