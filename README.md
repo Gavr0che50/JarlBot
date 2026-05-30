@@ -1,4 +1,4 @@
-# 🤖 JarlBot V1.2
+# 🤖 JarlBot V1.3
 
 Bot Discord de gestion de **défis d'équipes** et de **sessions spéciales** pour communautés EVA.
 
@@ -19,7 +19,7 @@ Création automatique de **salons privés**, **événements Discord**, **rappels
   - 48h avant → MP aux joueurs qui ont réagi ⏰
   - 24h avant → message dans le salon privé
   - 1h avant → message dans le salon privé
-- Nettoyage automatique du salon 2h après le match
+- Nettoyage automatique du salon 48h après le match
 
 ### 🎮 Sessions spéciales
 - **`/session`** — Propose une session (Nocturne, Matinale, Événement)
@@ -99,7 +99,7 @@ Toute la configuration éditable se trouve dans **`config.js`** :
 | `RAPPEL_MP_AVANT_MATCH` | Délai du rappel MP (par défaut 48h) |
 | `RAPPEL_24H_AVANT_MATCH` | Rappel dans le salon (24h avant) |
 | `RAPPEL_1H_AVANT_MATCH` | Rappel dans le salon (1h avant) |
-| `DELAI_SUPPRESSION_SALON` | Délai avant suppression du salon (2h après) |
+| `DELAI_SUPPRESSION_SALON` | Délai avant suppression du salon (48h après) |
 | `MESSAGES.*` | Tous les textes du bot (personnalisables) |
 
 ---
