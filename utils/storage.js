@@ -89,7 +89,7 @@ function saveResultats(all) {
 
 function getUserResult(userId) {
   const r = lireResultats();
-  return r.users[userId] || { wins: 0, losses: 0 };
+  return r.users[userId] || { wins: 0, losses: 0, participations: { free: 0, session: 0, mix: 0, scrim: 0 } };
 }
 
 function getTeamResult(teamId) {
@@ -99,7 +99,7 @@ function getTeamResult(teamId) {
 
 function incrementWin(userId) {
   const r = lireResultats();
-  const cur = r.users[userId] || { wins: 0, losses: 0 };
+  const cur = r.users[userId] || { wins: 0, losses: 0, participations: { free: 0, session: 0, mix: 0, scrim: 0 } };
   cur.wins = (cur.wins || 0) + 1;
   r.users[userId] = cur;
   saveResultats(r);
@@ -107,8 +107,18 @@ function incrementWin(userId) {
 
 function incrementLoss(userId) {
   const r = lireResultats();
-  const cur = r.users[userId] || { wins: 0, losses: 0 };
+  const cur = r.users[userId] || { wins: 0, losses: 0, participations: { free: 0, session: 0, mix: 0, scrim: 0 } };
   cur.losses = (cur.losses || 0) + 1;
+  r.users[userId] = cur;
+  saveResultats(r);
+}
+
+function incrementParticipation(userId, type) {
+  const r = lireResultats();
+  const cur = r.users[userId] || { wins: 0, losses: 0, participations: { free: 0, session: 0, mix: 0, scrim: 0 } };
+  if (!cur.participations) cur.participations = { free: 0, session: 0, mix: 0, scrim: 0 };
+  if (!cur.participations[type]) cur.participations[type] = 0;
+  cur.participations[type] = cur.participations[type] + 1;
   r.users[userId] = cur;
   saveResultats(r);
 }
@@ -153,4 +163,5 @@ module.exports = {
   incrementLoss,
   incrementTeamWin,
   incrementTeamLoss,
+  incrementParticipation,
 };

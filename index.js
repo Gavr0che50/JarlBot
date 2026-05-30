@@ -23,7 +23,7 @@ const {
   sauverDefi, getDefi, supprimerDefi, lireDefis,
   sauverSession, getSession, supprimerSession, lireSessions,
 } = require('./utils/storage');
-const { lireResultats, getUserResult, getTeamResult, incrementWin, incrementLoss, incrementTeamWin, incrementTeamLoss } = require('./utils/storage');
+const { lireResultats, getUserResult, getTeamResult, incrementWin, incrementLoss, incrementTeamWin, incrementTeamLoss, incrementParticipation } = require('./utils/storage');
 
 // ========================================
 // 🔌 Initialisation du client Discord
@@ -310,6 +310,42 @@ async function validerDefi(message, defi) {
       }
       defi.participants = participantIds;
     }
+  }
+
+  // Incrémenter les participations pour le match validé
+  try {
+    if (defi.type === 'free') {
+      if (defi.participants && Array.isArray(defi.participants)) {
+        for (const uid of defi.participants) {
+          try { incrementParticipation(uid, 'free'); } catch (e) { /* ignore */ }
+        }
+      }
+    } else {
+      // mix or scrim: increment for role members
+      if (defi.monEquipeId) {
+        const roleA = guild.roles.cache.get(defi.monEquipeId);
+        if (roleA) for (const [, m] of roleA.members) {
+          if (m.user.bot) continue;
+          try { incrementParticipation(m.id, defi.type); } catch (e) {}
+        }
+      }
+      if (defi.adversaireId) {
+        const roleB = guild.roles.cache.get(defi.adversaireId);
+        if (roleB) for (const [, m] of roleB.members) {
+          if (m.user.bot) continue;
+          try { incrementParticipation(m.id, defi.type); } catch (e) {}
+        }
+      }
+      // renforts: credit them too
+      if (defi.renforts && Array.isArray(defi.renforts)) {
+        for (const r of defi.renforts) {
+          if (!r || !r.userId) continue;
+          try { incrementParticipation(r.userId, defi.type); } catch (e) {}
+        }
+      }
+    }
+  } catch (e) {
+    console.error('❌ Erreur incrément participation :', e);
   }
 
   try {
@@ -648,7 +684,13 @@ async function gererCommandeResultat(interaction) {
 
   const user = interaction.options.getUser('joueur') || interaction.user;
   const r = getUserResult(user.id);
-  await interaction.reply({ content: `📊 Bilan de ${user.tag} (scrims uniquement) :\n✅ Victoires : ${r.wins}\n❌ Défaites : ${r.losses}`, flags: 64 });
+  await interaction.reply({ content:
+    `📊 Bilan de ${user.tag} (scrims uniquement) :\n` +
+    `✅ Victoires : ${r.wins}\n` +
+    `❌ Défaites : ${r.losses}\n` +
+    `👥 Participations : free=${r.participations.free}, session=${r.participations.session}, mix=${r.participations.mix}, scrim=${r.participations.scrim}`,
+    flags: 64,
+  });
 }
 
 async function gererCommandePlanning(interaction) {
@@ -1033,6 +1075,11 @@ async function gererBoutonSession(interaction) {
   session.lancee = true;
 
   try {
+    // Incrémenter la participation de chaque joueur pour cette session lancée
+    for (const uid of session.participants) {
+      try { incrementParticipation(uid, 'session'); } catch (e) { /* ignore */ }
+    }
+
     // 1. Créer le salon privé de session
     const salon = await creerSalonPriveSession(interaction.guild, session);
     session.salonId = salon.id;
