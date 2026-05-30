@@ -66,6 +66,21 @@ function genererNomSalon(defi, guild) {
   return `${config.PREFIXE_SALON_PRIVE}-${defi.type}-${date}`.toLowerCase();
 }
 
+/** Génère un nom de salon basé sur la session */
+function genererNomSalonSession(session) {
+  const date = session.date.replace(/\//g, '-');
+
+  return `${session.type}-${date}`
+    .toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/[éèê]/g, 'e')
+    .replace(/[àâ]/g, 'a')
+    .replace(/[ùû]/g, 'u')
+    .replace(/[îï]/g, 'i')
+    .replace(/[ôö]/g, 'o')
+    .replace(/[ç]/g, 'c');
+
+    }
 // ========================================
 // 🚀 Démarrage du bot
 // ========================================
@@ -246,6 +261,34 @@ async function creerSalonPrive(guild, defi) {
     ],
   });
 }
+
+async function creerSalonPriveSession(guild, session) {
+  const permissionsParticipants = session.participants.map(userId => ({
+    id: userId,
+    allow: [
+      PermissionFlagsBits.ViewChannel,
+      PermissionFlagsBits.SendMessages,
+      PermissionFlagsBits.ReadMessageHistory,
+    ],
+  }));
+
+  return guild.channels.create({
+    name: genererNomSalonSession(session),
+    type: ChannelType.GuildText,
+
+    // On peut réutiliser la catégorie "Défis" pour le moment
+    parent: process.env.CATEGORIE_DEFIS_ID,
+
+    permissionOverwrites: [
+      {
+        id: guild.roles.everyone.id,
+        deny: [PermissionFlagsBits.ViewChannel],
+      },
+      ...permissionsParticipants,
+    ],
+  });
+}
+
 
 async function creerEventDiscord(guild, defi, nomSalon) {
   const dateMatch = parseDateHeure(defi.date, defi.heure);
@@ -483,19 +526,55 @@ async function gererBoutonSession(interaction) {
     session.participants = session.participants.filter(id => id !== userId);
   }
 
-  if (session.participants.length >= session.joueursRequis) {
-    session.lancee = true;
+ if (session.participants.length >= session.joueursRequis) {
+  session.lancee = true;
+
+  try {
+    // 1. Créer le salon privé de session
+    const salon = await creerSalonPriveSession(interaction.guild, session);
+    session.salonId = salon.id;
+
+    // 2. Créer l'événement Discord
+    const event = await creerEventSession(interaction.guild, session);
+    session.eventId = event.id;
+
+    // 3. Sauvegarder la session mise à jour
     sauverSession(interaction.message.id, session);
 
+    // 4. Mettre à jour l'embed public
     const embed = construireEmbedSession(session, true);
     await interaction.update({ embeds: [embed], components: [] });
 
-    const mentions = session.participants.map(id => `<@${id}>`).join(' ');
-    await interaction.followUp({ content: config.MESSAGES.SESSION_LANCEE(session.type, mentions) });
+    // 5. Envoyer un message dans le salon privé
+    await salon.send(
+      `🎉 **Session ${session.type} validée !**\n\n` +
+      `📅 Date : **${session.date}** à **${session.heure}**\n` +
+      `👥 Participants : ${session.participants.map(id => `<@${id}>`).join(' ')}\n\n` +
+      `Bienvenue dans votre salon privé de session !`
+    );
 
+    // 6. Confirmer dans le salon public
+    await interaction.followUp({
+      content:
+        config.MESSAGES.SESSION_LANCEE(session) +
+        `\n\n📌 Salon privé créé : <#${salon.id}>`,
+    });
+
+    // 7. Nettoyer la sauvegarde si tu ne veux plus garder la session active
     supprimerSession(interaction.message.id);
+
     return;
+
+  } catch (err) {
+    console.error('❌ Erreur validation session :', err);
+
+    return interaction.reply({
+      content: '❌ Impossible de créer le salon privé de session.',
+      ephemeral: true,
+    });
   }
+}
+
 
   sauverSession(interaction.message.id, session);
   const embed = construireEmbedSession(session);

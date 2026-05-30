@@ -1,38 +1,76 @@
 // ========================================
-// 🔧 CONFIGURATION DU BOT — V1.0
+// 🔧 CONFIGURATION DU BOT — JarlBot V1.1
 // Modifie ces valeurs selon tes préférences
 // ========================================
 
 module.exports = {
-   // === Sessions spéciales ===
-  COULEUR_SESSION_OUVERTE: 0x5865F2, // bleu Discord
-  COULEUR_SESSION_LANCEE: 0x57F287,  // vert
-  BUTTON_ID_REJOINDRE: 'session_join',
-  BUTTON_ID_QUITTER: 'session_leave',
-  // === Validation du défi ===
-  // Nombre de votes ✅ nécessaires de l'équipe adverse pour valider le défi
-  SEUIL_VALIDATION: 1,
 
-  // === Emojis utilisés pour les réactions ===
+  // ========================================
+  // ⚙️ PARAMÈTRES GÉNÉRAUX
+  // ========================================
+
+  // Nombre de votes ✅ nécessaires de l'équipe adverse pour valider un défi
+  // 🧪 Mode test : mets 2 (avec ton vote qui compte double = validation immédiate)
+  // 🚀 Mode prod : mets 3 ou plus
+  SEUIL_VALIDATION: 2,
+
+  // Préfixe utilisé pour nommer les salons privés créés automatiquement
+  // Exemple final : defi-mix-25-12-2025
+  PREFIXE_SALON_PRIVE: 'defi',
+
+
+  // ========================================
+  // 😀 EMOJIS DES RÉACTIONS
+  // ========================================
+
   EMOJI_ACCEPTER: '✅',
   EMOJI_REFUSER: '❌',
   EMOJI_RAPPEL_MP: '⏰',
 
-  // === Délais (en millisecondes) ===
-  // Astuce : 1000 = 1s, 60_000 = 1min, 3_600_000 = 1h
-  RAPPEL_MP_AVANT_MATCH: 48 * 60 * 60 * 1000,  // 48h avant : MP aux intéressés
-  RAPPEL_24H_AVANT_MATCH: 24 * 60 * 60 * 1000, // 24h avant : message dans le salon
-  RAPPEL_1H_AVANT_MATCH: 1 * 60 * 60 * 1000,   //  1h avant : message dans le salon
-  DUREE_UN_MATCH: 40 * 60 * 1000, // 40 minutes par match
-  DELAI_SUPPRESSION_SALON: 2 * 60 * 60 * 1000, // 2h après : suppression salon + event
 
-  // === Préfixe des salons privés créés ===
-  // Le nom final sera : defi-{type}-{JJ-MM-AAAA}
-  PREFIXE_SALON_PRIVE: 'defi',
+  // ========================================
+  // 🎨 COULEURS DES EMBEDS (sessions)
+  // ========================================
 
-  // === Messages personnalisables ===
+  COULEUR_SESSION_OUVERTE: 0x5865F2, // 🔵 Bleu Discord
+  COULEUR_SESSION_LANCEE:  0x57F287, // 🟢 Vert
+
+
+  // ========================================
+  // 🔘 IDENTIFIANTS DES BOUTONS (sessions)
+  // ========================================
+
+  BUTTON_ID_REJOINDRE: 'session_join',
+  BUTTON_ID_QUITTER:   'session_leave',
+
+
+  // ========================================
+  // ⏱️ DÉLAIS (en millisecondes)
+  // Astuce : 1000 = 1s | 60_000 = 1min | 3_600_000 = 1h
+  // ========================================
+
+  // --- Défis ---
+  RAPPEL_MP_AVANT_MATCH:    48 * 60 * 60 * 1000, // 48h avant : MP aux intéressés
+  RAPPEL_24H_AVANT_MATCH:   24 * 60 * 60 * 1000, // 24h avant : message dans le salon
+  RAPPEL_1H_AVANT_MATCH:     1 * 60 * 60 * 1000, //  1h avant : message dans le salon
+  DUREE_UN_MATCH:           40 * 60 * 1000,      // 40 min par match
+  DELAI_SUPPRESSION_SALON:   2 * 60 * 60 * 1000, //  2h après : suppression salon + event
+
+  // --- Sessions ---
+  DUREE_SESSION:             3 * 60 * 60 * 1000, // 3h de durée par défaut
+  RAPPEL_MP_SESSION_AVANT:  48 * 60 * 60 * 1000, // 48h avant : MP aux participants
+
+
+  // ========================================
+  // 💬 MESSAGES PERSONNALISABLES
+  // ========================================
+
   MESSAGES: {
-    // Message posté dans le salon d'origine quand un défi est lancé
+
+    // ----------------------------------------
+    // ⚔️ DÉFIS
+    // ----------------------------------------
+
     NOUVEAU_DEFI: (defi, monEquipe, adversaire) =>
       `📢 **Nouveau défi !**\n\n` +
       `${monEquipe} défie ${adversaire} !\n` +
@@ -43,8 +81,7 @@ module.exports = {
       `${adversaire} → Réagissez avec ✅ pour accepter ou ❌ pour refuser.\n` +
       `Il faut **${module.exports.SEUIL_VALIDATION} vote(s) ✅** de l'équipe adverse pour valider le défi.`,
 
-    // Message de bienvenue dans le salon privé
-   BIENVENUE_SALON_PRIVE: (defi) =>
+    BIENVENUE_SALON_PRIVE: (defi) =>
       `🎉 **Défi accepté !**\n\n` +
       `<@&${defi.monEquipeId}> vs <@&${defi.adversaireId}>\n` +
       `🎮 Type : **${defi.type}**\n` +
@@ -54,55 +91,70 @@ module.exports = {
       `Il sera supprimé automatiquement 2h après le match.\n\n` +
       `⏰ **Cliquez sur l'horloge ci-dessous pour être notifié(e) en MP 48h avant le match !**`,
 
-    // Confirmation postée en réponse au message de défi original
     DEFI_ACCEPTE_REPLY: (defi, salonId) =>
-      `🎉 **Défi accepté !**\n` +
-      `Un salon privé a été créé : <#${salonId}>\n` +
-      `📅 RDV le **${defi.date}** à **${defi.heure}** (${defi.type})`,
+      `✅ **Défi validé !** Rendez-vous dans <#${salonId}> 🎮`,
 
-    // Rappels dans le salon privé
-    RAPPEL_24H: '⏰ **Rappel : le match est dans 24h !**',
-    RAPPEL_1H: '🔔 **Rappel : le match commence dans 1h !**',
+    RAPPEL_24H: `⏰ **Rappel : votre match a lieu dans 24h !**`,
+    RAPPEL_1H:  `🔥 **Rappel : votre match commence dans 1h !** Préparez-vous !`,
 
-    // Rappel MP pour ceux qui ont cliqué sur ⏰
     RAPPEL_MP: (defi) =>
-      `⏰ **Rappel : ton match arrive dans 48h !**\n` +
+      `⏰ **Rappel : ton match approche !**\n\n` +
       `🎮 Type : **${defi.type}**\n` +
-      `📅 Date : **${defi.date}** à **${defi.heure}**\n` +
-      `💬 Salon : <#${defi.salonId}>`,
+      `⚔️ Nombre de matchs : **${defi.nombreMatchs}**\n` +
+      `📅 Date : **${defi.date}** à **${defi.heure}**\n\n` +
+      `Bon match ! 🍀`,
 
-    // Titre + description de l'événement Discord
-    EVENT_TITRE: (defi, nomMonEquipe, nomAdversaire) =>
-      `${defi.type.toUpperCase()} - ${nomMonEquipe} vs ${nomAdversaire} (${defi.nombreMatchs} match${defi.nombreMatchs > 1 ? 's' : ''})`,
- EVENT_DESCRIPTION: (defi, nomMonEquipe, nomAdversaire) =>
-      `🎮 Défi entre ${nomMonEquipe} et ${nomAdversaire}\n` +
-      `🆚 Type : ${defi.type}\n` +
-      `⚔️ Nombre de matchs : ${defi.nombreMatchs}\n` +
-      `📅 Date : ${defi.date} à ${defi.heure}`,
 
-    // Messages d'erreurs slash /defi
-    ERREUR_PAS_LE_ROLE: (monEquipe) =>
-      `❌ Tu n'as pas le rôle ${monEquipe} ! Tu ne peux pas défier au nom de cette équipe.`,
-    ERREUR_AUTO_DEFI: `❌ Tu ne peux pas défier ta propre équipe !`,
-    ERREUR_FORMAT_DATE: `❌ Format de date invalide. Utilise JJ/MM/AAAA (ex: 25/12/2025)`,
-    ERREUR_FORMAT_HEURE: `❌ Format d'heure invalide. Utilise HH:MM (ex: 20:30)`,
-    ERREUR_DATE_PASSEE: `❌ La date du match doit être dans le futur !`,
-    ERREUR_PAS_VOTANT: `❌ Tu n'as pas le rôle de l'équipe défiée, tu ne peux pas voter sur ce défi.`,
-    ERREUR_VALIDATION: `⚠️ Le défi a été validé mais une erreur est survenue lors de la création du salon ou de l'événement. Vérifie les permissions du bot.`,
-    ERREUR_NB_MATCHS: `❌ Le nombre de matchs doit être entre 1 et 10.`,
-     // === Messages sessions spéciales ===
-    SESSION_TITRE: (type) => `🎮 Session ${type} proposée !`,
+    // ----------------------------------------
+    // ❌ MESSAGES D'ERREUR (défis)
+    // ----------------------------------------
+
+    ERREUR_PAS_LE_ROLE: (role) =>
+      `❌ Tu dois avoir le rôle ${role} pour lancer ce défi.`,
+    ERREUR_AUTO_DEFI:    `❌ Tu ne peux pas défier ta propre équipe !`,
+    ERREUR_FORMAT_DATE:  `❌ Format de date invalide. Utilise **JJ/MM/AAAA** (ex: 25/12/2025).`,
+    ERREUR_FORMAT_HEURE: `❌ Format d'heure invalide. Utilise **HH:MM** (ex: 20:30).`,
+    ERREUR_DATE_PASSEE:  `❌ La date doit être dans le futur.`,
+    ERREUR_VALIDATION:   `❌ Une erreur est survenue lors de la validation du défi.`,
+
+
+    // ----------------------------------------
+    // 🎮 SESSIONS SPÉCIALES
+    // ----------------------------------------
+
+    SESSION_TITRE: (type) => `🎮 Session ${type}`,
+
     SESSION_DESCRIPTION: (type) =>
-      `Une session **${type}** est proposée ! Clique sur ✅ pour participer.`,
-    SESSION_PARTICIPANTS_VIDE: '_Personne pour l\'instant..._',
-    SESSION_DEJA_INSCRIT: '✅ Tu es déjà inscrit à cette session !',
-    SESSION_PAS_INSCRIT: '❌ Tu n\'étais pas inscrit à cette session.',
-    SESSION_INTROUVABLE: '❌ Cette session n\'existe plus.',
-    SESSION_LANCEE: (type, mentions) =>
-      `🎉 **La session ${type} est LANCÉE !** 🎉\n\n` +
-      `Participants : ${mentions}\n\n` +
-      `Bon jeu à tous ! 🎮`,
+      `Une session **${type}** est proposée !\n` +
+      `Clique sur **Je participe** pour t'inscrire. 🚀`,
+
+    SESSION_PARTICIPANTS_VIDE: `*Aucun participant pour l'instant...*`,
+
     SESSION_FOOTER: (auteur) => `Proposée par ${auteur}`,
+
+    SESSION_LANCEE: (session) => {
+      const mentions = session.participants.map(id => `<@${id}>`).join(' ');
+      return (
+        `🎉 **La session ${session.type} est lancée !**\n\n` +
+        `📅 ${session.date} à ${session.heure}\n` +
+        `👥 Participants : ${mentions}\n\n` +
+        `Bon jeu à tous ! 🎮`
+      );
+    },
+
+    RAPPEL_MP_SESSION: (session) =>
+      `⏰ **Rappel : la session ${session.type} commence dans 48h !**\n\n` +
+      `📅 Date : **${session.date}** à **${session.heure}**\n\n` +
+      `À tout à l'heure ! 🎮`,
+
+
+    // ----------------------------------------
+    // ❌ MESSAGES D'ERREUR (sessions)
+    // ----------------------------------------
+
+    SESSION_INTROUVABLE:  `❌ Cette session n'existe plus.`,
+    SESSION_DEJA_INSCRIT: `⚠️ Tu es déjà inscrit à cette session.`,
+    SESSION_PAS_INSCRIT:  `⚠️ Tu n'es pas inscrit à cette session.`,
+
   },
 };
-
