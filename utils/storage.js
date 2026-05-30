@@ -1,43 +1,89 @@
 const fs = require('fs');
 const path = require('path');
 
-const FICHIER = path.join(__dirname, '..', 'defis.json');
+const FICHIER_DEFIS = path.join(__dirname, '..', 'defis.json');
+const FICHIER_SESSIONS = path.join(__dirname, '..', 'sessions.json');
 
-// Lire tous les défis sauvegardés
-function lireDefis() {
-  if (!fs.existsSync(FICHIER)) return {};
+// ========================================
+// 🛠️ Fonctions génériques (lecture/écriture)
+// ========================================
+
+function lireFichier(chemin) {
+  if (!fs.existsSync(chemin)) return {};
   try {
-    const contenu = fs.readFileSync(FICHIER, 'utf8');
+    const contenu = fs.readFileSync(chemin, 'utf8');
     return JSON.parse(contenu);
   } catch (err) {
-    console.error('❌ Erreur lecture defis.json :', err);
+    console.error(`❌ Erreur lecture ${chemin} :`, err);
     return {};
   }
 }
 
-// Écrire tous les défis
-function ecrireDefis(defis) {
-  fs.writeFileSync(FICHIER, JSON.stringify(defis, null, 2), 'utf8');
+function ecrireFichier(chemin, donnees) {
+  fs.writeFileSync(chemin, JSON.stringify(donnees, null, 2), 'utf8');
 }
 
-// Sauvegarder un défi
+// ========================================
+// 🎯 Défis
+// ========================================
+
+function lireDefis() {
+  return lireFichier(FICHIER_DEFIS);
+}
+
 function sauverDefi(messageId, defi) {
   const defis = lireDefis();
   defis[messageId] = defi;
-  ecrireDefis(defis);
+  ecrireFichier(FICHIER_DEFIS, defis);
 }
 
-// Récupérer un défi
 function getDefi(messageId) {
-  const defis = lireDefis();
-  return defis[messageId] || null;
+  return lireDefis()[messageId] || null;
 }
 
-// Supprimer un défi
 function supprimerDefi(messageId) {
   const defis = lireDefis();
   delete defis[messageId];
-  ecrireDefis(defis);
+  ecrireFichier(FICHIER_DEFIS, defis);
 }
 
-module.exports = { lireDefis, sauverDefi, getDefi, supprimerDefi };
+// ========================================
+// 🎮 Sessions spéciales
+// ========================================
+
+function lireSessions() {
+  return lireFichier(FICHIER_SESSIONS);
+}
+
+function sauverSession(messageId, session) {
+  const sessions = lireSessions();
+  sessions[messageId] = session;
+  ecrireFichier(FICHIER_SESSIONS, sessions);
+}
+
+function getSession(messageId) {
+  return lireSessions()[messageId] || null;
+}
+
+function supprimerSession(messageId) {
+  const sessions = lireSessions();
+  delete sessions[messageId];
+  ecrireFichier(FICHIER_SESSIONS, sessions);
+}
+
+// ========================================
+// 📦 Exports
+// ========================================
+
+module.exports = {
+  // Défis
+  lireDefis,
+  sauverDefi,
+  getDefi,
+  supprimerDefi,
+  // Sessions
+  lireSessions,
+  sauverSession,
+  getSession,
+  supprimerSession,
+};

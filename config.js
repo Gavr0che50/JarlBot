@@ -4,6 +4,11 @@
 // ========================================
 
 module.exports = {
+   // === Sessions spéciales ===
+  COULEUR_SESSION_OUVERTE: 0x5865F2, // bleu Discord
+  COULEUR_SESSION_LANCEE: 0x57F287,  // vert
+  BUTTON_ID_REJOINDRE: 'session_join',
+  BUTTON_ID_QUITTER: 'session_leave',
   // === Validation du défi ===
   // Nombre de votes ✅ nécessaires de l'équipe adverse pour valider le défi
   SEUIL_VALIDATION: 1,
@@ -85,6 +90,19 @@ module.exports = {
     ERREUR_PAS_VOTANT: `❌ Tu n'as pas le rôle de l'équipe défiée, tu ne peux pas voter sur ce défi.`,
     ERREUR_VALIDATION: `⚠️ Le défi a été validé mais une erreur est survenue lors de la création du salon ou de l'événement. Vérifie les permissions du bot.`,
     ERREUR_NB_MATCHS: `❌ Le nombre de matchs doit être entre 1 et 10.`,
+     // === Messages sessions spéciales ===
+    SESSION_TITRE: (type) => `🎮 Session ${type} proposée !`,
+    SESSION_DESCRIPTION: (type) =>
+      `Une session **${type}** est proposée ! Clique sur ✅ pour participer.`,
+    SESSION_PARTICIPANTS_VIDE: '_Personne pour l\'instant..._',
+    SESSION_DEJA_INSCRIT: '✅ Tu es déjà inscrit à cette session !',
+    SESSION_PAS_INSCRIT: '❌ Tu n\'étais pas inscrit à cette session.',
+    SESSION_INTROUVABLE: '❌ Cette session n\'existe plus.',
+    SESSION_LANCEE: (type, mentions) =>
+      `🎉 **La session ${type} est LANCÉE !** 🎉\n\n` +
+      `Participants : ${mentions}\n\n` +
+      `Bon jeu à tous ! 🎮`,
+    SESSION_FOOTER: (auteur) => `Proposée par ${auteur}`,
   },
 };
 

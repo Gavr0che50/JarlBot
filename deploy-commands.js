@@ -48,6 +48,44 @@ const commands = [
         .setDescription('Heure du match (ex: 20:30)')
         .setRequired(true)
     ),
+    // Commande /session
+new SlashCommandBuilder()
+  .setName('session')
+  .setDescription('Propose une session spéciale (admin uniquement)')
+  .setDefaultMemberPermissions('0') // Admin only par défaut, ajustable côté serveur
+  .addStringOption(option =>
+    option.setName('type')
+      .setDescription('Type de session')
+      .setRequired(true)
+      .addChoices(
+        { name: '🌙 Nocturne', value: 'Nocturne' },
+        { name: '☀️ Matinale', value: 'Matinale' },
+        { name: '🎉 Événement spécial', value: 'Événement spécial' },
+      )
+  )
+  .addIntegerOption(option =>
+    option.setName('joueurs')
+      .setDescription('Nombre de joueurs requis pour lancer la session')
+      .setRequired(true)
+      .setMinValue(2)
+      .setMaxValue(50)
+  )
+  .addStringOption(option =>
+  option.setName('date')
+    .setDescription('Date de la session (ex: 25/12/2025)')
+    .setRequired(true)
+)
+.addStringOption(option =>
+  option.setName('heure')
+    .setDescription('Heure de la session (ex: 22:00)')
+    .setRequired(true)
+)
+
+  .addStringOption(option =>
+    option.setName('description')
+      .setDescription('Infos complémentaires')
+      .setRequired(false)
+  ),
 ].map(cmd => cmd.toJSON());
 
 // === Envoi à Discord ===

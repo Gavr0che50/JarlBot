@@ -1,6 +1,6 @@
 // ========================================
-// 🤖 JarlBot — V1.0
-// Bot de gestion de défis d'équipes
+// 🤖 JarlBot — V1.1
+// Bot de gestion de défis d'équipes + sessions
 // ========================================
 
 require('dotenv').config();
@@ -12,10 +12,17 @@ const {
   PermissionFlagsBits,
   GuildScheduledEventEntityType,
   GuildScheduledEventPrivacyLevel,
+  EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
 } = require('discord.js');
 const schedule = require('node-schedule');
 const config = require('./config');
-const { sauverDefi, getDefi, supprimerDefi, lireDefis } = require('./utils/storage');
+const {
+  sauverDefi, getDefi, supprimerDefi, lireDefis,
+  sauverSession, getSession, supprimerSession,
+} = require('./utils/storage');
 
 // ========================================
 // 🔌 Initialisation du client Discord
@@ -32,7 +39,7 @@ const client = new Client({
 });
 
 // ========================================
-// 🛠️ Utilitaires
+// 🛠️ Utilitaires généraux
 // ========================================
 
 /** Convertit "JJ/MM/AAAA" + "HH:MM" en objet Date */
@@ -42,250 +49,21 @@ function parseDateHeure(date, heure) {
   return new Date(annee, mois - 1, jour, h, m, 0);
 }
 
-/** Récupère le nom d'un rôle à partir de son ID */
+/** Récupère le nom d'un rôle (ou fallback) */
 function getNomRole(guild, roleId, fallback = 'Équipe') {
   const role = guild.roles.cache.get(roleId);
   return role ? role.name : fallback;
 }
 
-/** Nettoie un nom pour qu'il soit utilisable dans un nom de salon Discord */
-function nettoyerNomPourSalon(nom) {
-  return nom
-    .toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // enlève les accents
-    .replace(/[^a-z0-9]+/g, '-') // remplace tout caractère spécial par -
-    .replace(/^-+|-+$/g, ''); // supprime les - en début/fin
-}
-
-/** Génère le nom du salon privé : type-equipe1-vs-equipe2-date */
-function genererNomSalon(defi, guild) {
-  const nomEquipe1 = nettoyerNomPourSalon(getNomRole(guild, defi.monEquipeId, 'equipe1'));
-  const nomEquipe2 = nettoyerNomPourSalon(getNomRole(guild, defi.adversaireId, 'equipe2'));
-  const dateFormatee = defi.date.replace(/\//g, '-');
-  return `${defi.type}-${nomEquipe1}-vs-${nomEquipe2}-${dateFormatee}`;
-}
-
-// ========================================
-// ⏰ Planification des tâches (rappels + nettoyage)
-// ========================================
-
-function programmerTachesDefi(messageId, defi) {
-  const dateMatch = parseDateHeure(defi.date, defi.heure);
-  const maintenant = new Date();
-
-  planifier(
-    `rappel_mp_${messageId}`,
-    new Date(dateMatch.getTime() - config.RAPPEL_MP_AVANT_MATCH),
-    maintenant,
-    () => envoyerRappelMP(messageId)
-  );
-
-  planifier(
-    `rappel24h_${messageId}`,
-    new Date(dateMatch.getTime() - config.RAPPEL_24H_AVANT_MATCH),
-    maintenant,
-    () => envoyerRappelSalon(messageId, config.MESSAGES.RAPPEL_24H)
-  );
-
-  planifier(
-    `rappel1h_${messageId}`,
-    new Date(dateMatch.getTime() - config.RAPPEL_1H_AVANT_MATCH),
-    maintenant,
-    () => envoyerRappelSalon(messageId, config.MESSAGES.RAPPEL_1H)
-  );
-
-  planifier(
-    `nettoyage_${messageId}`,
-    new Date(dateMatch.getTime() + config.DELAI_SUPPRESSION_SALON),
-    maintenant,
-    () => nettoyerDefi(messageId)
-  );
-}
-
+/** Programme une tâche si la date est dans le futur */
 function planifier(nom, date, maintenant, callback) {
-  if (date > maintenant) {
-    schedule.scheduleJob(nom, date, callback);
-  }
+  if (date > maintenant) schedule.scheduleJob(nom, date, callback);
 }
 
-// ========================================
-// 📬 Envoi des rappels
-// ========================================
-
-async function envoyerRappelSalon(messageId, texte) {
-  const defi = getDefi(messageId);
-  if (!defi || !defi.salonId) return;
-
-  try {
-    const salon = await client.channels.fetch(defi.salonId);
-    if (!salon) return;
-
-    await salon.send(
-      `${texte}\n` +
-      `<@&${defi.monEquipeId}> vs <@&${defi.adversaireId}>\n` +
-      `📅 ${defi.date} à ${defi.heure} (${defi.type})`
-    );
-  } catch (err) {
-    console.error('❌ Erreur envoi rappel salon :', err);
-  }
-}
-
-async function envoyerRappelMP(messageId) {
-  const defi = getDefi(messageId);
-  if (!defi || !defi.salonId || !defi.messageBienvenueId) return;
-
-  try {
-    const salon = await client.channels.fetch(defi.salonId);
-    if (!salon) return;
-
-    const message = await salon.messages.fetch(defi.messageBienvenueId);
-    if (!message) return;
-
-    const reactionHorloge = message.reactions.cache.get(config.EMOJI_RAPPEL_MP);
-    if (!reactionHorloge) return;
-
-    const users = await reactionHorloge.users.fetch();
-
-    for (const [, user] of users) {
-      if (user.bot) continue;
-      try {
-        await user.send(config.MESSAGES.RAPPEL_MP(defi));
-      } catch {
-        console.log(`⚠️ Impossible d'envoyer un MP à ${user.tag} (MP fermés ?)`);
-      }
-    }
-  } catch (err) {
-    console.error('❌ Erreur envoi rappel MP :', err);
-  }
-}
-
-// ========================================
-// 🧹 Nettoyage d'un défi terminé
-// ========================================
-
-async function nettoyerDefi(messageId) {
-  const defi = getDefi(messageId);
-  if (!defi) return;
-
-  try {
-    if (defi.salonId) {
-      const salon = await client.channels.fetch(defi.salonId).catch(() => null);
-      if (salon) await salon.delete('Nettoyage automatique après le match');
-    }
-
-    if (defi.eventId && defi.guildId) {
-      const guild = await client.guilds.fetch(defi.guildId);
-      const event = await guild.scheduledEvents.fetch(defi.eventId).catch(() => null);
-      if (event) await event.delete();
-    }
-  } catch (err) {
-    console.error('❌ Erreur nettoyage :', err);
-  }
-
-  supprimerDefi(messageId);
-  console.log(`🗑️ Défi ${messageId} nettoyé.`);
-}
-
-// ========================================
-// 🔄 Reprogrammer les tâches au démarrage
-// ========================================
-
-function reprogrammerTaches() {
-  const defis = lireDefis();
-  let count = 0;
-  for (const [messageId, defi] of Object.entries(defis)) {
-    if (defi.valide) {
-      programmerTachesDefi(messageId, defi);
-      count++;
-    }
-  }
-  if (count > 0) console.log(`🔄 ${count} tâche(s) reprogrammée(s).`);
-}
-
-// ========================================
-// 🎯 Validation d'un défi
-// ========================================
-
-async function validerDefi(message, defi) {
-  const guild = message.guild;
-  defi.valide = true;
-
-  try {
-    // 1. Créer le salon privé
-    const salon = await creerSalonPrive(guild, defi);
-    defi.salonId = salon.id;
-
-    // 2. Envoyer le message de bienvenue + réaction ⏰
-    const messageBienvenue = await salon.send(config.MESSAGES.BIENVENUE_SALON_PRIVE(defi));
-    await messageBienvenue.react(config.EMOJI_RAPPEL_MP);
-    defi.messageBienvenueId = messageBienvenue.id;
-
-    // 3. Créer l'événement Discord
-    const event = await creerEventDiscord(guild, defi, salon.name);
-    defi.eventId = event.id;
-
-    // 4. Sauvegarder les nouvelles infos
-    sauverDefi(message.id, defi);
-
-    // 5. Programmer les rappels + nettoyage
-    programmerTachesDefi(message.id, defi);
-
-    // 6. Annoncer dans le salon d'origine
-    await message.reply(config.MESSAGES.DEFI_ACCEPTE_REPLY(defi, salon.id));
-  } catch (err) {
-    console.error('❌ Erreur validation défi :', err);
-    await message.reply(config.MESSAGES.ERREUR_VALIDATION);
-  }
-}
-
-/** Crée un salon privé visible uniquement par les deux équipes */
-async function creerSalonPrive(guild, defi) {
-  return guild.channels.create({
-    name: genererNomSalon(defi, guild),
-    type: ChannelType.GuildText,
-    parent: process.env.CATEGORIE_DEFIS_ID,
-    permissionOverwrites: [
-      {
-        id: guild.roles.everyone.id,
-        deny: [PermissionFlagsBits.ViewChannel],
-      },
-      {
-        id: defi.monEquipeId,
-        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages],
-      },
-      {
-        id: defi.adversaireId,
-        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages],
-      },
-    ],
-  });
-}
-
-/** Crée l'événement Discord (calendrier natif) */
-async function creerEventDiscord(guild, defi, nomSalon) {
-  const dateMatch = parseDateHeure(defi.date, defi.heure);
-  const dateFin = new Date(dateMatch.getTime() + defi.nombreMatchs * config.DUREE_UN_MATCH);
-
-  const nomMonEquipe = getNomRole(guild, defi.monEquipeId, 'Équipe 1');
-  const nomAdversaire = getNomRole(guild, defi.adversaireId, 'Équipe 2');
-
-  // Titre et description construits directement ici (pas via config)
-  const titre = `${nomMonEquipe} vs ${nomAdversaire} (${defi.type})`;
-  const description =
-    `🎮 Défi entre ${nomMonEquipe} et ${nomAdversaire}\n` +
-    `🆚 Type : ${defi.type}\n` +
-    `⚔️ Nombre de matchs : ${defi.nombreMatchs}\n` +
-    `📅 Date : ${defi.date} à ${defi.heure}`;
-
-  return guild.scheduledEvents.create({
-    name: titre,
-    scheduledStartTime: dateMatch,
-    scheduledEndTime: dateFin,
-    privacyLevel: GuildScheduledEventPrivacyLevel.GuildOnly,
-    entityType: GuildScheduledEventEntityType.External,
-    entityMetadata: { location: `Salon #${nomSalon}` },
-    description: description,
-  });
+/** Génère un nom de salon basé sur le défi */
+function genererNomSalon(defi, guild) {
+  const date = defi.date.replace(/\//g, '-');
+  return `${config.PREFIXE_SALON_PRIVE}-${defi.type}-${date}`.toLowerCase();
 }
 
 // ========================================
@@ -298,23 +76,41 @@ client.once('ready', () => {
 });
 
 // ========================================
-// ⚡ Commandes slash
+// ⚡ Routeur d'interactions
 // ========================================
 
 client.on('interactionCreate', async (interaction) => {
-  if (!interaction.isChatInputCommand()) return;
+  try {
+    // --- Commandes slash ---
+    if (interaction.isChatInputCommand()) {
+      switch (interaction.commandName) {
+        case 'ping':    return interaction.reply('Pong ! 🏓');
+        case 'defi':    return gererCommandeDefi(interaction);
+        case 'session': return gererCommandeSession(interaction);
+      }
+    }
 
-  if (interaction.commandName === 'ping') {
-    await interaction.reply('Pong ! 🏓');
-    return;
-  }
-
-  if (interaction.commandName === 'defi') {
-    await gererCommandeDefi(interaction);
+    // --- Boutons ---
+    if (interaction.isButton()) {
+      if (
+        interaction.customId === config.BUTTON_ID_REJOINDRE ||
+        interaction.customId === config.BUTTON_ID_QUITTER
+      ) {
+        return gererBoutonSession(interaction);
+      }
+    }
+  } catch (err) {
+    console.error('❌ Erreur interaction :', err);
+    if (interaction.isRepliable() && !interaction.replied) {
+      await interaction.reply({ content: '❌ Une erreur est survenue.', ephemeral: true }).catch(() => {});
+    }
   }
 });
 
-/** Gère la commande /defi */
+// ========================================
+// ⚔️ COMMANDE /defi
+// ========================================
+
 async function gererCommandeDefi(interaction) {
   const type = interaction.options.getString('type');
   const monEquipe = interaction.options.getRole('mon-equipe');
@@ -324,22 +120,22 @@ async function gererCommandeDefi(interaction) {
   const nombreMatchs = interaction.options.getInteger('nombre-matchs');
 
   // Validations
-  if (!interaction.member.roles.cache.has(monEquipe.id)) {
+  if (!interaction.member.roles.cache.has(monEquipe.id))
     return interaction.reply({ content: config.MESSAGES.ERREUR_PAS_LE_ROLE(monEquipe), ephemeral: true });
-  }
-  if (monEquipe.id === adversaire.id) {
-    return interaction.reply({ content: config.MESSAGES.ERREUR_AUTO_DEFI, ephemeral: true });
-  }
-  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(date)) {
-    return interaction.reply({ content: config.MESSAGES.ERREUR_FORMAT_DATE, ephemeral: true });
-  }
-  if (!/^\d{2}:\d{2}$/.test(heure)) {
-    return interaction.reply({ content: config.MESSAGES.ERREUR_FORMAT_HEURE, ephemeral: true });
-  }
-  if (parseDateHeure(date, heure) <= new Date()) {
-    return interaction.reply({ content: config.MESSAGES.ERREUR_DATE_PASSEE, ephemeral: true });
-  }
 
+  if (monEquipe.id === adversaire.id)
+    return interaction.reply({ content: config.MESSAGES.ERREUR_AUTO_DEFI, ephemeral: true });
+
+  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(date))
+    return interaction.reply({ content: config.MESSAGES.ERREUR_FORMAT_DATE, ephemeral: true });
+
+  if (!/^\d{2}:\d{2}$/.test(heure))
+    return interaction.reply({ content: config.MESSAGES.ERREUR_FORMAT_HEURE, ephemeral: true });
+
+  if (parseDateHeure(date, heure) <= new Date())
+    return interaction.reply({ content: config.MESSAGES.ERREUR_DATE_PASSEE, ephemeral: true });
+
+  // Crée le défi
   const defi = {
     type,
     nombreMatchs,
@@ -353,11 +149,12 @@ async function gererCommandeDefi(interaction) {
     valide: false,
   };
 
-  await interaction.reply({
-    content: config.MESSAGES.NOUVEAU_DEFI(defi, monEquipe, adversaire),
-  });
-
+  await interaction.reply(
+    `${config.MESSAGES.NOUVEAU_DEFI(defi, monEquipe, adversaire)}\n` +
+    `<@&${adversaire.id}> → réagissez avec ${config.EMOJI_ACCEPTER} pour accepter !`
+  );
   const message = await interaction.fetchReply();
+
   await message.react(config.EMOJI_ACCEPTER);
   await message.react(config.EMOJI_REFUSER);
 
@@ -365,41 +162,24 @@ async function gererCommandeDefi(interaction) {
 }
 
 // ========================================
-// 👍 Gestion des réactions (votes)
+// 🗳️ Réactions sur les défis
 // ========================================
 
 client.on('messageReactionAdd', async (reaction, user) => {
   if (user.bot) return;
-
-  if (reaction.partial) {
-    try { await reaction.fetch(); } catch { return; }
-  }
+  if (reaction.partial) await reaction.fetch().catch(() => null);
 
   const defi = getDefi(reaction.message.id);
   if (!defi || defi.valide) return;
 
   const guild = reaction.message.guild;
-  const membre = await guild.members.fetch(user.id).catch(() => null);
-  if (!membre) return;
-
   const emoji = reaction.emoji.name;
 
-  if (emoji !== config.EMOJI_ACCEPTER && emoji !== config.EMOJI_REFUSER) {
-    await reaction.users.remove(user.id).catch(() => {});
-    return;
-  }
-
-  if (!membre.roles.cache.has(defi.adversaireId)) {
-    await reaction.users.remove(user.id).catch(() => {});
-    try { await user.send(config.MESSAGES.ERREUR_PAS_VOTANT); } catch {}
-    return;
-  }
-
   if (emoji === config.EMOJI_ACCEPTER) {
-    const votesValides = await compterVotesValides(reaction, guild, defi.adversaireId);
-    console.log(`🗳️ Défi ${reaction.message.id} : ${votesValides}/${config.SEUIL_VALIDATION} votes valides`);
+    const votes = await compterVotesValides(reaction, guild, defi.adversaireId);
+    console.log(`🗳️ Défi ${reaction.message.id} : ${votes}/${config.SEUIL_VALIDATION} votes valides`);
 
-    if (votesValides >= config.SEUIL_VALIDATION) {
+    if (votes >= config.SEUIL_VALIDATION) {
       await validerDefi(reaction.message, defi);
     }
   }
@@ -418,6 +198,359 @@ async function compterVotesValides(reaction, guild, roleId) {
     if (m && m.roles.cache.has(roleId)) count++;
   }
   return count;
+}
+
+// ========================================
+// ✅ Validation d'un défi
+// ========================================
+
+async function validerDefi(message, defi) {
+  const guild = message.guild;
+  defi.valide = true;
+
+  try {
+    // 1. Créer le salon privé
+    const salon = await creerSalonPrive(guild, defi);
+    defi.salonId = salon.id;
+
+    // 2. Message de bienvenue + réaction ⏰
+    const bienvenue = await salon.send(config.MESSAGES.BIENVENUE_SALON_PRIVE(defi));
+    await bienvenue.react(config.EMOJI_RAPPEL_MP);
+    defi.messageBienvenueId = bienvenue.id;
+
+    // 3. Événement Discord
+    const event = await creerEventDiscord(guild, defi, salon.name);
+    defi.eventId = event.id;
+
+    // 4. Sauvegarde + tâches
+    sauverDefi(message.id, defi);
+    programmerTachesDefi(message.id, defi);
+
+    // 5. Confirmation
+    await message.reply(config.MESSAGES.DEFI_ACCEPTE_REPLY(defi, salon.id));
+  } catch (err) {
+    console.error('❌ Erreur validation défi :', err);
+    await message.reply(config.MESSAGES.ERREUR_VALIDATION);
+  }
+}
+
+async function creerSalonPrive(guild, defi) {
+  return guild.channels.create({
+    name: genererNomSalon(defi, guild),
+    type: ChannelType.GuildText,
+    parent: process.env.CATEGORIE_DEFIS_ID,
+    permissionOverwrites: [
+      { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
+      { id: defi.monEquipeId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] },
+      { id: defi.adversaireId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] },
+    ],
+  });
+}
+
+async function creerEventDiscord(guild, defi, nomSalon) {
+  const dateMatch = parseDateHeure(defi.date, defi.heure);
+  const dateFin = new Date(dateMatch.getTime() + defi.nombreMatchs * config.DUREE_UN_MATCH);
+
+  const nomMonEquipe = getNomRole(guild, defi.monEquipeId, 'Équipe 1');
+  const nomAdversaire = getNomRole(guild, defi.adversaireId, 'Équipe 2');
+
+  return guild.scheduledEvents.create({
+    name: `${nomMonEquipe} vs ${nomAdversaire} (${defi.type})`,
+    scheduledStartTime: dateMatch,
+    scheduledEndTime: dateFin,
+    privacyLevel: GuildScheduledEventPrivacyLevel.GuildOnly,
+    entityType: GuildScheduledEventEntityType.External,
+    entityMetadata: { location: `Salon #${nomSalon}` },
+    description:
+      `🎮 Défi entre ${nomMonEquipe} et ${nomAdversaire}\n` +
+      `🆚 Type : ${defi.type}\n` +
+      `⚔️ Nombre de matchs : ${defi.nombreMatchs}\n` +
+      `📅 Date : ${defi.date} à ${defi.heure}`,
+  });
+}
+
+// ========================================
+// ⏰ Planification & rappels
+// ========================================
+
+function programmerTachesDefi(messageId, defi) {
+  const dateMatch = parseDateHeure(defi.date, defi.heure);
+  const maintenant = new Date();
+
+  planifier(`rappelMP_${messageId}`,
+    new Date(dateMatch.getTime() - config.RAPPEL_MP_AVANT_MATCH),
+    maintenant, () => envoyerRappelMP(messageId));
+
+  planifier(`rappel24h_${messageId}`,
+    new Date(dateMatch.getTime() - config.RAPPEL_24H_AVANT_MATCH),
+    maintenant, () => envoyerRappelSalon(messageId, config.MESSAGES.RAPPEL_24H));
+
+  planifier(`rappel1h_${messageId}`,
+    new Date(dateMatch.getTime() - config.RAPPEL_1H_AVANT_MATCH),
+    maintenant, () => envoyerRappelSalon(messageId, config.MESSAGES.RAPPEL_1H));
+
+  planifier(`nettoyage_${messageId}`,
+    new Date(dateMatch.getTime() + config.DELAI_SUPPRESSION_SALON),
+    maintenant, () => nettoyerDefi(messageId));
+}
+
+function reprogrammerTaches() {
+  // Défis
+  const defis = lireDefis();
+  let countDefis = 0;
+  for (const [messageId, defi] of Object.entries(defis)) {
+    if (defi.valide) {
+      programmerTachesDefi(messageId, defi);
+      countDefis++;
+    }
+  }
+  if (countDefis > 0) console.log(`🔄 ${countDefis} défi(s) reprogrammé(s).`);
+
+  // Sessions
+  const { lireSessions } = require('./utils/storage');
+  const sessions = lireSessions();
+  let countSessions = 0;
+  for (const [messageId, session] of Object.entries(sessions)) {
+    if (!session.lancee) {
+      programmerTachesSession(messageId, session);
+      countSessions++;
+    }
+  }
+  if (countSessions > 0) console.log(`🔄 ${countSessions} session(s) reprogrammée(s).`);
+}
+async function envoyerRappelSalon(messageId, texte) {
+  const defi = getDefi(messageId);
+  if (!defi || !defi.salonId) return;
+
+  try {
+    const salon = await client.channels.fetch(defi.salonId);
+    if (!salon) return;
+    await salon.send(
+      `${texte}\n<@&${defi.monEquipeId}> vs <@&${defi.adversaireId}>\n📅 ${defi.date} à ${defi.heure} (${defi.type})`
+    );
+  } catch (err) {
+    console.error('❌ Erreur envoi rappel salon :', err);
+  }
+}
+
+async function envoyerRappelMP(messageId) {
+  const defi = getDefi(messageId);
+  if (!defi || !defi.salonId || !defi.messageBienvenueId) return;
+
+  try {
+    const salon = await client.channels.fetch(defi.salonId);
+    if (!salon) return;
+    const message = await salon.messages.fetch(defi.messageBienvenueId);
+    if (!message) return;
+
+    const reactionHorloge = message.reactions.cache.get(config.EMOJI_RAPPEL_MP);
+    if (!reactionHorloge) return;
+
+    const users = await reactionHorloge.users.fetch();
+    for (const [, user] of users) {
+      if (user.bot) continue;
+      try { await user.send(config.MESSAGES.RAPPEL_MP(defi)); }
+      catch { console.log(`⚠️ MP impossible à ${user.tag}`); }
+    }
+  } catch (err) {
+    console.error('❌ Erreur envoi rappel MP :', err);
+  }
+}
+
+async function nettoyerDefi(messageId) {
+  const defi = getDefi(messageId);
+  if (!defi) return;
+
+  try {
+    if (defi.salonId) {
+      const salon = await client.channels.fetch(defi.salonId).catch(() => null);
+      if (salon) await salon.delete('Nettoyage automatique après le match');
+    }
+    if (defi.eventId && defi.guildId) {
+      const guild = await client.guilds.fetch(defi.guildId);
+      const event = await guild.scheduledEvents.fetch(defi.eventId).catch(() => null);
+      if (event) await event.delete();
+    }
+  } catch (err) {
+    console.error('❌ Erreur nettoyage :', err);
+  }
+
+  supprimerDefi(messageId);
+  console.log(`🗑️ Défi ${messageId} nettoyé.`);
+}
+
+// ========================================
+// 🎮 COMMANDE /session
+// ========================================
+
+async function gererCommandeSession(interaction) {
+  const type = interaction.options.getString('type');
+  const joueursRequis = interaction.options.getInteger('joueurs');
+  const date = interaction.options.getString('date');
+  const heure = interaction.options.getString('heure');
+  const description = interaction.options.getString('description') || null;
+
+  // Validations format
+  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(date))
+    return interaction.reply({ content: config.MESSAGES.ERREUR_FORMAT_DATE, ephemeral: true });
+  if (!/^\d{2}:\d{2}$/.test(heure))
+    return interaction.reply({ content: config.MESSAGES.ERREUR_FORMAT_HEURE, ephemeral: true });
+  if (parseDateHeure(date, heure) <= new Date())
+    return interaction.reply({ content: config.MESSAGES.ERREUR_DATE_PASSEE, ephemeral: true });
+
+  const session = {
+    type,
+    joueursRequis,
+    date,
+    heure,
+    description,
+    auteurId: interaction.user.id,
+    auteurTag: interaction.user.tag,
+    guildId: interaction.guild.id,
+    channelId: interaction.channel.id,
+    participants: [],
+    lancee: false,
+  };
+
+  try {
+    const event = await creerEventSession(interaction.guild, session);
+    session.eventId = event.id;
+  } catch (err) {
+    console.error('❌ Erreur création event session :', err);
+  }
+
+  const embed = construireEmbedSession(session);
+  const components = [construireBoutonsSession()];
+  const message = await interaction.reply({ embeds: [embed], components, fetchReply: true });
+
+  sauverSession(message.id, session);
+  programmerTachesSession(message.id, session);
+}
+
+function construireEmbedSession(session, lancee = false) {
+  const participantsTexte = session.participants.length > 0
+    ? session.participants.map(id => `<@${id}>`).join('\n')
+    : config.MESSAGES.SESSION_PARTICIPANTS_VIDE;
+
+  const embed = new EmbedBuilder()
+    .setColor(lancee ? config.COULEUR_SESSION_LANCEE : config.COULEUR_SESSION_OUVERTE)
+    .setTitle(config.MESSAGES.SESSION_TITRE(session.type))
+    .setDescription(config.MESSAGES.SESSION_DESCRIPTION(session.type))
+    .addFields(
+      { name: '👥 Joueurs', value: `${session.participants.length} / ${session.joueursRequis}`, inline: true },
+      { name: '📅 Date', value: session.date, inline: true },
+      { name: '🕐 Heure', value: session.heure, inline: true },
+    )
+    .addFields({ name: '✅ Participants', value: participantsTexte })
+    .setFooter({ text: config.MESSAGES.SESSION_FOOTER(session.auteurTag) })
+    .setTimestamp();
+
+  if (session.description) embed.addFields({ name: '📝 Description', value: session.description });
+  return embed;
+}
+
+function construireBoutonsSession() {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(config.BUTTON_ID_REJOINDRE)
+      .setLabel('Je participe')
+      .setEmoji('✅')
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId(config.BUTTON_ID_QUITTER)
+      .setLabel('Me retirer')
+      .setEmoji('❌')
+      .setStyle(ButtonStyle.Secondary),
+  );
+}
+
+async function gererBoutonSession(interaction) {
+  const session = getSession(interaction.message.id);
+  if (!session)
+    return interaction.reply({ content: config.MESSAGES.SESSION_INTROUVABLE, ephemeral: true });
+  if (session.lancee)
+    return interaction.reply({ content: '⚠️ Cette session est déjà lancée.', ephemeral: true });
+
+  const userId = interaction.user.id;
+
+  if (interaction.customId === config.BUTTON_ID_REJOINDRE) {
+    if (session.participants.includes(userId))
+      return interaction.reply({ content: config.MESSAGES.SESSION_DEJA_INSCRIT, ephemeral: true });
+    session.participants.push(userId);
+  } else if (interaction.customId === config.BUTTON_ID_QUITTER) {
+    if (!session.participants.includes(userId))
+      return interaction.reply({ content: config.MESSAGES.SESSION_PAS_INSCRIT, ephemeral: true });
+    session.participants = session.participants.filter(id => id !== userId);
+  }
+
+  if (session.participants.length >= session.joueursRequis) {
+    session.lancee = true;
+    sauverSession(interaction.message.id, session);
+
+    const embed = construireEmbedSession(session, true);
+    await interaction.update({ embeds: [embed], components: [] });
+
+    const mentions = session.participants.map(id => `<@${id}>`).join(' ');
+    await interaction.followUp({ content: config.MESSAGES.SESSION_LANCEE(session.type, mentions) });
+
+    supprimerSession(interaction.message.id);
+    return;
+  }
+
+  sauverSession(interaction.message.id, session);
+  const embed = construireEmbedSession(session);
+  await interaction.update({ embeds: [embed] });
+}
+
+async function creerEventSession(guild, session) {
+  const dateDebut = parseDateHeure(session.date, session.heure);
+  const dateFin = new Date(dateDebut.getTime() + config.DUREE_SESSION);
+
+  return guild.scheduledEvents.create({
+    name: `Session ${session.type}`,
+    scheduledStartTime: dateDebut,
+    scheduledEndTime: dateFin,
+    privacyLevel: GuildScheduledEventPrivacyLevel.GuildOnly,
+    entityType: GuildScheduledEventEntityType.External,
+    entityMetadata: { location: 'Discord' },
+    description: session.description || `Session ${session.type} organisée sur le serveur.`,
+  });
+}
+
+function programmerTachesSession(messageId, session) {
+  const dateSession = parseDateHeure(session.date, session.heure);
+  const maintenant = new Date();
+
+  planifier(
+    `rappel_mp_session_${messageId}`,
+    new Date(dateSession.getTime() - config.RAPPEL_MP_AVANT_MATCH),
+    maintenant,
+    () => envoyerRappelMPSession(messageId)
+  );
+}
+
+async function envoyerRappelMPSession(messageId) {
+  const session = getSession(messageId);
+  if (!session) return;
+
+  try {
+    const salon = await client.channels.fetch(session.channelId);
+    const message = await salon.messages.fetch(messageId);
+    const reaction = message.reactions.cache.get(config.EMOJI_RAPPEL_MP);
+    if (!reaction) return;
+
+    const users = await reaction.users.fetch();
+    for (const [, user] of users) {
+      if (user.bot) continue;
+      try {
+        await user.send(config.MESSAGES.RAPPEL_MP_SESSION(session));
+      } catch {
+        console.log(`⚠️ MP impossible à ${user.tag}`);
+      }
+    }
+  } catch (err) {
+    console.error('❌ Erreur rappel MP session :', err);
+  }
 }
 
 // ========================================
