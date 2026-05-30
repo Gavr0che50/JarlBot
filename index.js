@@ -354,7 +354,7 @@ function reprogrammerTaches() {
   const sessions = lireSessions();
   let countSessions = 0;
   for (const [messageId, session] of Object.entries(sessions)) {
-    if (!session.lancee) {
+    if (session.lancee && session.messageBienvenueId) {
       programmerTachesSession(messageId, session);
       countSessions++;
     }
@@ -467,7 +467,6 @@ async function gererCommandeSession(interaction) {
   const message = await interaction.reply({ embeds: [embed], components, fetchReply: true });
 
   sauverSession(message.id, session);
-  programmerTachesSession(message.id, session);
 }
 
 function construireEmbedSession(session, lancee = false) {
@@ -545,23 +544,27 @@ async function gererBoutonSession(interaction) {
     const embed = construireEmbedSession(session, true);
     await interaction.update({ embeds: [embed], components: [] });
 
-    // 5. Envoyer un message dans le salon privé
-    await salon.send(
+    // 5. Envoyer un message dans le salon privé et ajouter la réaction horloge
+    const messageBienvenue = await salon.send(
       `🎉 **Session ${session.type} validée !**\n\n` +
       `📅 Date : **${session.date}** à **${session.heure}**\n` +
       `👥 Participants : ${session.participants.map(id => `<@${id}>`).join(' ')}\n\n` +
-      `Bienvenue dans votre salon privé de session !`
+      `Bienvenue dans votre salon privé de session !\n\n` +
+      `⏰ Réagis avec ${config.EMOJI_RAPPEL_MP} si tu veux être notifié(e) en MP 48h avant la session.`
     );
+    await messageBienvenue.react(config.EMOJI_RAPPEL_MP);
+    session.messageBienvenueId = messageBienvenue.id;
 
-    // 6. Confirmer dans le salon public
+    // 6. Sauvegarder la session mise à jour avec le message de bienvenue
+    sauverSession(interaction.message.id, session);
+    programmerTachesSession(interaction.message.id, session);
+
+    // 7. Confirmer dans le salon public
     await interaction.followUp({
       content:
         config.MESSAGES.SESSION_LANCEE(session) +
         `\n\n📌 Salon privé créé : <#${salon.id}>`,
     });
-
-    // 7. Nettoyer la sauvegarde si tu ne veux plus garder la session active
-    supprimerSession(interaction.message.id);
 
     return;
 
@@ -610,11 +613,11 @@ function programmerTachesSession(messageId, session) {
 
 async function envoyerRappelMPSession(messageId) {
   const session = getSession(messageId);
-  if (!session) return;
+  if (!session || !session.salonId || !session.messageBienvenueId) return;
 
   try {
-    const salon = await client.channels.fetch(session.channelId);
-    const message = await salon.messages.fetch(messageId);
+    const salon = await client.channels.fetch(session.salonId);
+    const message = await salon.messages.fetch(session.messageBienvenueId);
     const reaction = message.reactions.cache.get(config.EMOJI_RAPPEL_MP);
     if (!reaction) return;
 
