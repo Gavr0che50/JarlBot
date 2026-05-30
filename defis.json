@@ -1,1 +1,19 @@
-{}
+{
+  "1510246727016251412": {
+    "type": "scrim",
+    "niveauAttendu": null,
+    "nombreMatchs": 4,
+    "monEquipeId": "1509962395056083065",
+    "adversaireId": "1509963063921610772",
+    "date": "30/05/2026",
+    "heure": "14:00",
+    "auteurId": "241238662048776193",
+    "guildId": "758016766898339871",
+    "channelId": "1509861719122382928",
+    "valide": true,
+    "participants": [],
+    "salonId": "1510246750093447280",
+    "messageBienvenueId": "1510246751116857496",
+    "eventId": "1510246753092370593"
+  }
+}

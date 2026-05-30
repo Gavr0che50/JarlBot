@@ -54,7 +54,7 @@ module.exports = {
   RAPPEL_24H_AVANT_MATCH:   24 * 60 * 60 * 1000, // 24h avant : message dans le salon
   RAPPEL_1H_AVANT_MATCH:     1 * 60 * 60 * 1000, //  1h avant : message dans le salon
   DUREE_UN_MATCH:           40 * 60 * 1000,      // 40 min par match
-  DELAI_SUPPRESSION_SALON:   2 * 60 * 60 * 1000, //  2h après : suppression salon + event
+  DELAI_SUPPRESSION_SALON:  48 * 60 * 60 * 1000, // 48h après : suppression salon + event
 
   // --- Sessions ---
   DUREE_SESSION:             3 * 60 * 60 * 1000, // 3h de durée par défaut
@@ -115,7 +115,7 @@ module.exports = {
         `⚔️ Nombre de matchs : **${defi.nombreMatchs}** (~${defi.nombreMatchs * 40} min)\n` +
         `📅 Date : **${defi.date}** à **${defi.heure}**\n\n` +
         `Ce salon est privé : seules les deux équipes peuvent y discuter.\n` +
-        `Il sera supprimé automatiquement 2h après le match.\n\n` +
+        `Il sera supprimé automatiquement 48h après le match.\n\n` +
         `⏰ **Cliquez sur l'horloge ci-dessous pour être notifié(e) en MP 48h avant le match !**`;
     },
 

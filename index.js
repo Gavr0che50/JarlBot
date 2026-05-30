@@ -561,20 +561,23 @@ async function gererBoutonResultat(interaction) {
     sauverDefi(messageId, defi);
 
     // Apply results: credit wins/losses to role members (non-bot)
-    const guild = interaction.guild;
-    const winnerRole = guild.roles.cache.get(defi.result.winnerRoleId);
-    const loserRole = guild.roles.cache.get(defi.result.loserRoleId);
+    // Only record wins/losses for scrims (ignore free, mix, sessions)
+    if (defi.type === 'scrim') {
+      const guild = interaction.guild;
+      const winnerRole = guild.roles.cache.get(defi.result.winnerRoleId);
+      const loserRole = guild.roles.cache.get(defi.result.loserRoleId);
 
-    if (winnerRole) {
-      for (const [, m] of winnerRole.members) {
-        if (m.user.bot) continue;
-        incrementWin(m.id);
+      if (winnerRole) {
+        for (const [, m] of winnerRole.members) {
+          if (m.user.bot) continue;
+          incrementWin(m.id);
+        }
       }
-    }
-    if (loserRole) {
-      for (const [, m] of loserRole.members) {
-        if (m.user.bot) continue;
-        incrementLoss(m.id);
+      if (loserRole) {
+        for (const [, m] of loserRole.members) {
+          if (m.user.bot) continue;
+          incrementLoss(m.id);
+        }
       }
     }
 
