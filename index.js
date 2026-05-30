@@ -23,6 +23,7 @@ const {
   sauverDefi, getDefi, supprimerDefi, lireDefis,
   sauverSession, getSession, supprimerSession, lireSessions,
 } = require('./utils/storage');
+const { lireResultats, incrementWin, incrementLoss } = require('./utils/storage');
 
 // ========================================
 // 🔌 Initialisation du client Discord
@@ -85,10 +86,13 @@ function genererNomSalonSession(session) {
 // 🚀 Démarrage du bot
 // ========================================
 
-client.once('ready', () => {
+function handleReady() {
   console.log(`✅ Bot connecté en tant que ${client.user.tag} !`);
   reprogrammerTaches();
-});
+}
+
+client.once('ready', handleReady);
+client.once('clientReady', handleReady);
 
 // ========================================
 // ⚡ Routeur d'interactions
@@ -100,7 +104,12 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.isChatInputCommand()) {
       switch (interaction.commandName) {
         case 'ping':    return interaction.reply('Pong ! 🏓');
-        case 'defi':    return gererCommandeDefi(interaction);
+        case 'mix':     return gererCommandeMatch(interaction);
+        case 'scrim':   return gererCommandeMatch(interaction);
+        case 'free':    return gererCommandeMatch(interaction);
+        case 'renfort': return gererCommandeRenfort(interaction);
+        case 'resultat': return gererCommandeResultat(interaction);
+        case 'planning': return gererCommandePlanning(interaction);
         case 'session': return gererCommandeSession(interaction);
         case 'cleanup': return gererCommandeCleanup(interaction);
       }
@@ -108,95 +117,136 @@ client.on('interactionCreate', async (interaction) => {
 
     // --- Boutons ---
     if (interaction.isButton()) {
+      // Session join/leave
       if (
         interaction.customId === config.BUTTON_ID_REJOINDRE ||
         interaction.customId === config.BUTTON_ID_QUITTER
       ) {
         return gererBoutonSession(interaction);
       }
+
+      // Résultats post-match (customId: result_<messageId>_<teamId>)
+      if (interaction.customId && interaction.customId.startsWith('result_')) {
+        return gererBoutonResultat(interaction);
+      }
     }
   } catch (err) {
     console.error('❌ Erreur interaction :', err);
     if (interaction.isRepliable() && !interaction.replied) {
-      await interaction.reply({ content: '❌ Une erreur est survenue.', ephemeral: true }).catch(() => {});
+      await interaction.reply({ content: '❌ Une erreur est survenue.', flags: 64 }).catch(() => {});
     }
   }
 });
 
 // ========================================
-// ⚔️ COMMANDE /defi
+// ⚔️ COMMANDES /mix, /scrim, /free
 // ========================================
 
-async function gererCommandeDefi(interaction) {
-  const type = interaction.options.getString('type');
-  const monEquipe = interaction.options.getRole('mon-equipe');
-  const adversaire = interaction.options.getRole('adversaire');
+async function gererCommandeMatch(interaction) {
+  const type = interaction.commandName;
   const date = interaction.options.getString('date');
   const heure = interaction.options.getString('heure');
+  const niveauAttendu = interaction.options.getString('niveau-attendu');
+  const monEquipe = interaction.options.getRole('mon-equipe');
+  const adversaire = interaction.options.getRole('adversaire');
   const nombreMatchs = interaction.options.getInteger('nombre-matchs');
-
-  // Validations
-  if (!interaction.member.roles.cache.has(monEquipe.id))
-    return interaction.reply({ content: config.MESSAGES.ERREUR_PAS_LE_ROLE(monEquipe), ephemeral: true });
-
-  if (monEquipe.id === adversaire.id)
-    return interaction.reply({ content: config.MESSAGES.ERREUR_AUTO_DEFI, ephemeral: true });
+  const nombreJoueurs = interaction.options.getInteger('nombre-joueurs');
 
   if (!/^\d{2}\/\d{2}\/\d{4}$/.test(date))
-    return interaction.reply({ content: config.MESSAGES.ERREUR_FORMAT_DATE, ephemeral: true });
+    return interaction.reply({ content: config.MESSAGES.ERREUR_FORMAT_DATE, flags: 64 });
 
   if (!/^\d{2}:\d{2}$/.test(heure))
-    return interaction.reply({ content: config.MESSAGES.ERREUR_FORMAT_HEURE, ephemeral: true });
+    return interaction.reply({ content: config.MESSAGES.ERREUR_FORMAT_HEURE, flags: 64 });
 
   if (parseDateHeure(date, heure) <= new Date())
-    return interaction.reply({ content: config.MESSAGES.ERREUR_DATE_PASSEE, ephemeral: true });
+    return interaction.reply({ content: config.MESSAGES.ERREUR_DATE_PASSEE, flags: 64 });
 
-  // Crée le défi
-  const defi = {
+  if (type === 'free') {
+    if (typeof nombreJoueurs !== 'number' || nombreJoueurs < 2 || nombreJoueurs > 10) {
+      return interaction.reply({ content: '❌ Pour un free, indique de 2 à 10 joueurs.', flags: 64 });
+    }
+  } else {
+    if (!monEquipe || !adversaire) {
+      return interaction.reply({ content: '❌ Pour un mix ou un scrim, précise ton équipe et l\'adversaire.', flags: 64 });
+    }
+
+    if (!interaction.member.roles.cache.has(monEquipe.id))
+      return interaction.reply({ content: config.MESSAGES.ERREUR_PAS_LE_ROLE(monEquipe), flags: 64 });
+
+    if (monEquipe.id === adversaire.id)
+      return interaction.reply({ content: config.MESSAGES.ERREUR_AUTO_DEFI, flags: 64 });
+  }
+
+  const matchData = {
     type,
-    nombreMatchs,
-    monEquipeId: monEquipe.id,
-    adversaireId: adversaire.id,
+    niveauAttendu: type === 'free' ? niveauAttendu || null : null,
+    nombreMatchs: type === 'free' ? undefined : nombreMatchs,
+    nombreJoueurs: type === 'free' ? nombreJoueurs : undefined,
+    monEquipeId: type === 'free' ? null : (monEquipe ? monEquipe.id : null),
+    adversaireId: type === 'free' ? null : (adversaire ? adversaire.id : null),
     date,
     heure,
     auteurId: interaction.user.id,
     guildId: interaction.guild.id,
     channelId: interaction.channel.id,
     valide: false,
+    participants: [],
   };
 
-  await interaction.reply(
-    `${config.MESSAGES.NOUVEAU_DEFI(defi, monEquipe, adversaire)}\n` +
-    `<@&${adversaire.id}> → réagissez avec ${config.EMOJI_ACCEPTER} pour accepter !`
-  );
+  let replyContent = config.MESSAGES.NOUVEAU_MATCH(matchData, monEquipe, adversaire);
+  if (type !== 'free') {
+    replyContent += `\n<@&${adversaire.id}> → réagissez avec ${config.EMOJI_ACCEPTER} pour accepter !`;
+  }
+
+  await interaction.reply(replyContent);
   const message = await interaction.fetchReply();
 
   await message.react(config.EMOJI_ACCEPTER);
-  await message.react(config.EMOJI_REFUSER);
+  if (type !== 'free') {
+    await message.react(config.EMOJI_REFUSER);
+  }
 
-  sauverDefi(message.id, defi);
+  sauverDefi(message.id, matchData);
 }
 
 // ========================================
-// 🗳️ Réactions sur les défis
+// 🗳️ Réactions sur les matchs
 // ========================================
 
 client.on('messageReactionAdd', async (reaction, user) => {
   if (user.bot) return;
   if (reaction.partial) await reaction.fetch().catch(() => null);
 
-  const defi = getDefi(reaction.message.id);
-  if (!defi || defi.valide) return;
+  const matchData = getDefi(reaction.message.id);
+  if (!matchData || matchData.valide) return;
 
   const guild = reaction.message.guild;
   const emoji = reaction.emoji.name;
 
   if (emoji === config.EMOJI_ACCEPTER) {
-    const votes = await compterVotesValides(reaction, guild, defi.adversaireId);
-    console.log(`🗳️ Défi ${reaction.message.id} : ${votes}/${config.SEUIL_VALIDATION} votes valides`);
+    if (matchData.type === 'free') {
+      const reactionPositive = reaction.message.reactions.cache.get(config.EMOJI_ACCEPTER);
+      if (!reactionPositive) return;
 
-    if (votes >= config.SEUIL_VALIDATION) {
-      await validerDefi(reaction.message, defi);
+      const users = await reactionPositive.users.fetch();
+      const participantIds = [...new Set(
+        users.filter(u => !u.bot).map(u => u.id)
+      )];
+      if (!participantIds.includes(matchData.auteurId)) participantIds.unshift(matchData.auteurId);
+
+      console.log(`🗳️ Free ${reaction.message.id} : ${participantIds.length}/${matchData.nombreJoueurs} participants`);
+      if (participantIds.length >= matchData.nombreJoueurs) {
+        await validerDefi(reaction.message, matchData);
+      }
+    } else {
+      const adversaireCount = await getRoleMemberCount(guild, matchData.adversaireId);
+      const threshold = adversaireCount === 0 ? 1 : Math.min(4, adversaireCount);
+      const votes = await compterVotesValides(reaction, guild, matchData.adversaireId);
+      console.log(`🗳️ ${matchData.type} ${reaction.message.id} : ${votes}/${threshold} votes valides (${adversaireCount} membres au rôle)`);
+
+      if (votes >= threshold) {
+        await validerDefi(reaction.message, matchData);
+      }
     }
   }
 });
@@ -210,10 +260,34 @@ async function compterVotesValides(reaction, guild, roleId) {
 
   for (const [, u] of users) {
     if (u.bot) continue;
+    if (!roleId) {
+      count++;
+      continue;
+    }
     const m = await guild.members.fetch(u.id).catch(() => null);
     if (m && m.roles.cache.has(roleId)) count++;
   }
   return count;
+}
+
+async function getRoleMemberCount(guild, roleId) {
+  const role = guild.roles.cache.get(roleId);
+  if (!role) return 0;
+
+  const members = await guild.members.fetch().catch(() => null);
+  if (!members) return role.members.filter(m => !m.user.bot).size;
+
+  return members.filter(m => m.roles.cache.has(roleId) && !m.user.bot).size;
+}
+
+function trouverDefiParSalonId(salonId) {
+  const defis = lireDefis();
+  return Object.entries(defis).find(([, defi]) => defi.salonId === salonId) || [null, null];
+}
+
+function trouverSessionParSalonId(salonId) {
+  const sessions = lireSessions();
+  return Object.entries(sessions).find(([, session]) => session.salonId === salonId) || [null, null];
 }
 
 // ========================================
@@ -223,6 +297,20 @@ async function compterVotesValides(reaction, guild, roleId) {
 async function validerDefi(message, defi) {
   const guild = message.guild;
   defi.valide = true;
+
+  if (defi.type === 'free') {
+    const reactionPositive = message.reactions.cache.get(config.EMOJI_ACCEPTER);
+    if (reactionPositive) {
+      const users = await reactionPositive.users.fetch();
+      const participantIds = [...new Set(
+        users.filter(u => !u.bot).map(u => u.id)
+      )];
+      if (!participantIds.includes(defi.auteurId)) {
+        participantIds.unshift(defi.auteurId);
+      }
+      defi.participants = participantIds;
+    }
+  }
 
   try {
     // 1. Créer le salon privé
@@ -251,15 +339,52 @@ async function validerDefi(message, defi) {
 }
 
 async function creerSalonPrive(guild, defi) {
+  const botId = client.user?.id || guild.client?.user?.id;
+  const overwrites = [
+    { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
+  ];
+
+  if (defi.type === 'free') {
+    const participantOverwrites = defi.participants.map(userId => ({
+      id: userId,
+      allow: [
+        PermissionFlagsBits.ViewChannel,
+        PermissionFlagsBits.SendMessages,
+        PermissionFlagsBits.ReadMessageHistory,
+      ],
+    }));
+    overwrites.push(...participantOverwrites);
+  } else {
+    if (defi.monEquipeId) {
+      overwrites.push({
+        id: defi.monEquipeId,
+        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages],
+      });
+    }
+    if (defi.adversaireId) {
+      overwrites.push({
+        id: defi.adversaireId,
+        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages],
+      });
+    }
+  }
+
+  if (botId) {
+    overwrites.push({
+      id: botId,
+      allow: [
+        PermissionFlagsBits.ViewChannel,
+        PermissionFlagsBits.SendMessages,
+        PermissionFlagsBits.ReadMessageHistory,
+      ],
+    });
+  }
+
   return guild.channels.create({
     name: genererNomSalon(defi, guild),
     type: ChannelType.GuildText,
     parent: process.env.CATEGORIE_DEFIS_ID,
-    permissionOverwrites: [
-      { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
-      { id: defi.monEquipeId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] },
-      { id: defi.adversaireId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] },
-    ],
+    permissionOverwrites: overwrites,
   });
 }
 
@@ -307,22 +432,32 @@ async function creerSalonPriveSession(guild, session) {
 
 async function creerEventDiscord(guild, defi, nomSalon) {
   const dateMatch = parseDateHeure(defi.date, defi.heure);
-  const dateFin = new Date(dateMatch.getTime() + defi.nombreMatchs * config.DUREE_UN_MATCH);
+  const dateFin = new Date(
+    dateMatch.getTime() +
+      (defi.type === 'free' ? config.DUREE_SESSION : defi.nombreMatchs * config.DUREE_UN_MATCH)
+  );
 
   const nomMonEquipe = getNomRole(guild, defi.monEquipeId, 'Équipe 1');
   const nomAdversaire = getNomRole(guild, defi.adversaireId, 'Équipe 2');
+  const titreEvent = defi.type === 'free'
+    ? `Free (${defi.niveauAttendu || 'Libre'})`
+    : `${nomMonEquipe} vs ${nomAdversaire} (${defi.type})`;
 
   return guild.scheduledEvents.create({
-    name: `${nomMonEquipe} vs ${nomAdversaire} (${defi.type})`,
+    name: titreEvent,
     scheduledStartTime: dateMatch,
     scheduledEndTime: dateFin,
     privacyLevel: GuildScheduledEventPrivacyLevel.GuildOnly,
     entityType: GuildScheduledEventEntityType.External,
     entityMetadata: { location: `Salon #${nomSalon}` },
     description:
-      `🎮 Défi entre ${nomMonEquipe} et ${nomAdversaire}\n` +
-      `🆚 Type : ${defi.type}\n` +
-      `⚔️ Nombre de matchs : ${defi.nombreMatchs}\n` +
+      (defi.type === 'free'
+        ? `🎮 Free\n` +
+          `🎯 Niveau attendu : ${defi.niveauAttendu || 'Libre'}\n` +
+          `👥 Joueurs : ${defi.nombreJoueurs}\n`
+        : `🎮 Défi entre ${nomMonEquipe} et ${nomAdversaire}\n` +
+          `🆚 Type : ${defi.type}\n` +
+          `⚔️ Nombre de matchs : ${defi.nombreMatchs}\n`) +
       `📅 Date : ${defi.date} à ${defi.heure}`,
   });
 }
@@ -350,6 +485,157 @@ function programmerTachesDefi(messageId, defi) {
   planifier(`nettoyage_${messageId}`,
     new Date(dateMatch.getTime() + config.DELAI_SUPPRESSION_SALON),
     maintenant, () => nettoyerDefi(messageId));
+
+  // Planifier l'envoi du prompt de résultat à la fin du match (ne bloque pas le nettoyage)
+  const finMatch = new Date(dateMatch.getTime() + (defi.type === 'free' ? config.DUREE_SESSION : (defi.nombreMatchs || 1) * config.DUREE_UN_MATCH));
+  planifier(`prompt_result_${messageId}`, finMatch, maintenant, () => envoyerPromptResultat(messageId));
+}
+
+async function envoyerPromptResultat(messageId) {
+  const defi = getDefi(messageId);
+  if (!defi || !defi.salonId) return;
+  if (!defi.monEquipeId || !defi.adversaireId) return; // skip frees
+
+  try {
+    const salon = await client.channels.fetch(defi.salonId).catch(() => null);
+    if (!salon) return;
+
+    const nomEquipeA = getNomRole(salon.guild, defi.monEquipeId, 'Équipe 1');
+    const nomEquipeB = getNomRole(salon.guild, defi.adversaireId, 'Équipe 2');
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`result_${messageId}_${defi.monEquipeId}`)
+        .setLabel(`${nomEquipeA} a gagné ?`)
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId(`result_${messageId}_${defi.adversaireId}`)
+        .setLabel(`${nomEquipeB} a gagné ?`)
+        .setStyle(ButtonStyle.Primary),
+    );
+
+    const prompt = await salon.send({ content: `🏁 Le match est terminé ! Qui a gagné ?
+Un joueur de chaque équipe doit confirmer la même équipe pour valider le résultat. (Optionnel)` , components: [row] });
+
+    defi.resultMessageId = prompt.id;
+    defi.resultVotes = {};
+    defini = defi; // no-op to satisfy linter
+    sauverDefi(messageId, defi);
+  } catch (err) {
+    console.error('❌ Erreur envoi prompt résultat :', err);
+  }
+}
+
+async function gererBoutonResultat(interaction) {
+  // customId: result_<messageId>_<teamId>
+  const parts = interaction.customId.split('_');
+  if (parts.length < 3) return interaction.reply({ content: '❌ Identifiant invalide.', ephemeral: true });
+  const messageId = parts[1];
+  const teamId = parts.slice(2).join('_');
+
+  const defi = getDefi(messageId);
+  if (!defi) return interaction.reply({ content: '❌ Match introuvable.', ephemeral: true });
+  if (!defi.resultVotes) defi.resultVotes = {};
+  if (!defi.resultVotes[teamId]) defi.resultVotes[teamId] = [];
+
+  const userId = interaction.user.id;
+  if (!defi.resultVotes[teamId].includes(userId)) defi.resultVotes[teamId].push(userId);
+  sauverDefi(messageId, defi);
+
+  // Vérifier si le vote contient au moins un membre de chaque équipe
+  const voters = defi.resultVotes[teamId];
+  let hasA = false, hasB = false;
+  for (const uid of voters) {
+    const m = await interaction.guild.members.fetch(uid).catch(() => null);
+    if (!m) continue;
+    if (m.roles.cache.has(defi.monEquipeId)) hasA = true;
+    if (m.roles.cache.has(defi.adversaireId)) hasB = true;
+  }
+
+  await interaction.reply({ content: '✅ Vote enregistré.', ephemeral: true });
+
+  if (hasA && hasB) {
+    // Accept result
+    defi.result = { winnerRoleId: teamId, loserRoleId: (teamId === defi.monEquipeId ? defi.adversaireId : defi.monEquipeId) };
+    defi.resultAccepted = true;
+    sauverDefi(messageId, defi);
+
+    // Apply results: credit wins/losses to role members (non-bot)
+    const guild = interaction.guild;
+    const winnerRole = guild.roles.cache.get(defi.result.winnerRoleId);
+    const loserRole = guild.roles.cache.get(defi.result.loserRoleId);
+
+    if (winnerRole) {
+      for (const [, m] of winnerRole.members) {
+        if (m.user.bot) continue;
+        incrementWin(m.id);
+      }
+    }
+    if (loserRole) {
+      for (const [, m] of loserRole.members) {
+        if (m.user.bot) continue;
+        incrementLoss(m.id);
+      }
+    }
+
+    // Edit original prompt to disable buttons
+    try {
+      const channel = await client.channels.fetch(defi.salonId).catch(() => null);
+      if (channel && defi.resultMessageId) {
+        const msg = await channel.messages.fetch(defi.resultMessageId).catch(() => null);
+        if (msg) {
+          const disabledRow = msg.components.map(row => {
+            row.components.forEach(c => c.setDisabled(true));
+            return row;
+          });
+          await msg.edit({ content: msg.content + `\n\n✅ Résultat validé : <@&${defi.result.winnerRoleId}> gagne.`, components: disabledRow }).catch(() => {});
+        }
+      }
+    } catch (err) {
+      console.error('❌ Impossible de mettre à jour le message résultat :', err);
+    }
+
+    // Notify salon
+    try {
+      const channel = await client.channels.fetch(defi.salonId).catch(() => null);
+      if (channel) {
+        await channel.send(`🏆 Résultat validé : <@&${defi.result.winnerRoleId}> gagne contre <@&${defi.result.loserRoleId}>. Utilisez /resultat pour consulter vos stats (hors tournoi de league).`);
+      }
+    } catch (err) {
+      console.error('❌ Erreur notification résultat :', err);
+    }
+  }
+}
+
+async function gererCommandeResultat(interaction) {
+  const user = interaction.options.getUser('joueur') || interaction.user;
+  const resultats = lireResultats();
+  const r = resultats[user.id] || { wins: 0, losses: 0 };
+  await interaction.reply({ content: `📊 Bilan de ${user.tag} (hors tournoi de league) :\n✅ Victoires : ${r.wins}\n❌ Défaites : ${r.losses}`, flags: 64 });
+}
+
+async function gererCommandePlanning(interaction) {
+  try {
+    const events = await interaction.guild.scheduledEvents.fetch();
+    const now = new Date();
+    const max = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const upcoming = events.filter(ev => ev.scheduledStartAt && ev.scheduledStartAt >= now && ev.scheduledStartAt <= max);
+    if (!upcoming || upcoming.size === 0) {
+      return interaction.reply({ content: '📅 Aucun événement prévu dans les 7 prochains jours.', flags: 64 });
+    }
+
+    let text = '📅 Événements à venir (7 jours) :\n';
+    const sorted = upcoming.sort((a,b) => a.scheduledStartAt - b.scheduledStartAt);
+    for (const [, ev] of sorted) {
+      const when = new Date(ev.scheduledStartAt).toLocaleString();
+      text += `\n• **${ev.name}** — ${when}\n  ${ev.description || ''}\n`;
+    }
+
+    await interaction.reply({ content: text, flags: 64 });
+  } catch (err) {
+    console.error('❌ Erreur commande planning :', err);
+    await interaction.reply({ content: '❌ Impossible de récupérer le planning.', flags: 64 });
+  }
 }
 
 function reprogrammerTaches() {
@@ -383,9 +669,13 @@ async function envoyerRappelSalon(messageId, texte) {
   try {
     const salon = await client.channels.fetch(defi.salonId);
     if (!salon) return;
-    await salon.send(
-      `${texte}\n<@&${defi.monEquipeId}> vs <@&${defi.adversaireId}>\n📅 ${defi.date} à ${defi.heure} (${defi.type})`
-    );
+
+    let rappelText = `${texte}\n📅 ${defi.date} à ${defi.heure} (${defi.type})`;
+    if (defi.type !== 'free') {
+      rappelText = `${texte}\n<@&${defi.monEquipeId}> vs <@&${defi.adversaireId}>\n📅 ${defi.date} à ${defi.heure} (${defi.type})`;
+    }
+
+    await salon.send(rappelText);
   } catch (err) {
     console.error('❌ Erreur envoi rappel salon :', err);
   }
@@ -450,11 +740,11 @@ async function gererCommandeSession(interaction) {
 
   // Validations format
   if (!/^\d{2}\/\d{2}\/\d{4}$/.test(date))
-    return interaction.reply({ content: config.MESSAGES.ERREUR_FORMAT_DATE, ephemeral: true });
+    return interaction.reply({ content: config.MESSAGES.ERREUR_FORMAT_DATE, flags: 64 });
   if (!/^\d{2}:\d{2}$/.test(heure))
-    return interaction.reply({ content: config.MESSAGES.ERREUR_FORMAT_HEURE, ephemeral: true });
+    return interaction.reply({ content: config.MESSAGES.ERREUR_FORMAT_HEURE, flags: 64 });
   if (parseDateHeure(date, heure) <= new Date())
-    return interaction.reply({ content: config.MESSAGES.ERREUR_DATE_PASSEE, ephemeral: true });
+    return interaction.reply({ content: config.MESSAGES.ERREUR_DATE_PASSEE, flags: 64 });
 
   const session = {
     type,
@@ -479,17 +769,100 @@ async function gererCommandeSession(interaction) {
 
   const embed = construireEmbedSession(session);
   const components = [construireBoutonsSession()];
-  const message = await interaction.reply({ embeds: [embed], components, fetchReply: true });
+  await interaction.reply({ embeds: [embed], components });
+  const message = await interaction.fetchReply().catch((err) => {
+    console.error('❌ Impossible de récupérer le message de session :', err);
+    return null;
+  });
 
-  sauverSession(message.id, session);
+  if (message) {
+    sauverSession(message.id, session);
+  } else {
+    console.error('❌ Session non sauvegardée : message inconnu après reply');
+  }
+}
+
+async function gererCommandeRenfort(interaction) {
+  const channelId = interaction.channelId;
+  const userId = interaction.user.id;
+  const options = [
+    interaction.options.getUser('joueur1'),
+    interaction.options.getUser('joueur2'),
+    interaction.options.getUser('joueur3'),
+  ].filter(Boolean);
+
+  if (!options.length) {
+    return interaction.reply({ content: '❌ Indique au moins un joueur à inviter.', flags: 64 });
+  }
+
+  const [defiId, defi] = trouverDefiParSalonId(channelId);
+  const [sessionId, session] = !defi ? trouverSessionParSalonId(channelId) : [null, null];
+
+  if (!defi && !session) {
+    return interaction.reply({ content: '❌ Cette commande doit être utilisée dans un salon privé de match ou de session.', flags: 64 });
+  }
+
+  const isAdmin = interaction.member.permissions.has(PermissionFlagsBits.Administrator);
+  const isAuthorizedByDefi = defi && (
+    defi.auteurId === userId ||
+    (defi.type === 'free' && defi.participants.includes(userId)) ||
+    interaction.member.roles.cache.has(defi.monEquipeId) ||
+    interaction.member.roles.cache.has(defi.adversaireId)
+  );
+  const isAuthorizedBySession = session && (
+    session.auteurId === userId || session.participants.includes(userId)
+  );
+
+  if (!isAdmin && !isAuthorizedByDefi && !isAuthorizedBySession) {
+    return interaction.reply({ content: '❌ Tu n\'es pas autorisé(e) à inviter des joueurs dans ce salon.', flags: 64 });
+  }
+
+  const channel = await client.channels.fetch(channelId);
+  if (!channel || channel.type !== ChannelType.GuildText) {
+    return interaction.reply({ content: '❌ Impossible de récupérer le salon actuel.', flags: 64 });
+  }
+
+  const invited = [];
+  for (const user of options) {
+    if (user.bot) continue;
+    await channel.permissionOverwrites.edit(user.id, {
+      ViewChannel: true,
+      SendMessages: true,
+      ReadMessageHistory: true,
+    });
+    invited.push(user.id);
+    if (defi && defi.type === 'free' && !defi.participants.includes(user.id)) {
+      defi.participants.push(user.id);
+    }
+    if (session && !session.participants.includes(user.id)) {
+      session.participants.push(user.id);
+    }
+  }
+
+  if (!invited.length) {
+    return interaction.reply({ content: '❌ Aucun joueur valide à inviter.', flags: 64 });
+  }
+
+  if (defi && defiId) {
+    sauverDefi(defiId, defi);
+  }
+  if (session && sessionId) {
+    sauverSession(sessionId, session);
+  }
+
+  const mentionText = invited.map(id => `<@${id}>`).join(' ');
+  await interaction.reply({
+    content: `✅ Invitation envoyée : ${mentionText}`,
+    flags: 64,
+  });
 }
 
 async function gererCommandeCleanup(interaction) {
   if (!interaction.member?.permissions?.has(PermissionFlagsBits.Administrator)) {
-    return interaction.reply({ content: '❌ Commande réservée aux administrateurs.', ephemeral: true });
+    return interaction.reply({ content: '❌ Commande réservée aux administrateurs.', flags: 64 });
   }
 
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply({ flags: 64 });
 
   const defis = lireDefis();
   const sessions = lireSessions();
@@ -505,9 +878,14 @@ async function gererCommandeCleanup(interaction) {
   try {
     for (const [messageId, defi] of Object.entries(defis)) {
       if (defi.salonId) {
-        const salon = await client.channels.fetch(defi.salonId).catch(() => null);
+        const salon = await client.channels.fetch(defi.salonId).catch(err => {
+          console.error(`❌ Impossible de récupérer le salon défi ${defi.salonId} :`, err.message);
+          return null;
+        });
         if (salon) {
-          await salon.delete('Nettoyage administrateur').catch(() => null);
+          await salon.delete('Nettoyage administrateur').catch(err => {
+            console.error(`❌ Impossible de supprimer le salon défi ${defi.salonId} :`, err.message);
+          });
           deletedChannels++;
         }
       }
@@ -527,9 +905,14 @@ async function gererCommandeCleanup(interaction) {
 
     for (const [messageId, session] of Object.entries(sessions)) {
       if (session.salonId) {
-        const salon = await client.channels.fetch(session.salonId).catch(() => null);
+        const salon = await client.channels.fetch(session.salonId).catch(err => {
+          console.error(`❌ Impossible de récupérer le salon session ${session.salonId} :`, err.message);
+          return null;
+        });
         if (salon) {
-          await salon.delete('Nettoyage administrateur').catch(() => null);
+          await salon.delete('Nettoyage administrateur').catch(err => {
+            console.error(`❌ Impossible de supprimer le salon session ${session.salonId} :`, err.message);
+          });
           deletedChannels++;
         }
       }
@@ -555,7 +938,7 @@ async function gererCommandeCleanup(interaction) {
     });
   } catch (err) {
     console.error('❌ Erreur cleanup :', err);
-    await interaction.editReply({ content: '❌ Une erreur est survenue lors du nettoyage.', ephemeral: true });
+    await interaction.editReply({ content: '❌ Une erreur est survenue lors du nettoyage.' });
   }
 }
 
@@ -599,19 +982,19 @@ function construireBoutonsSession() {
 async function gererBoutonSession(interaction) {
   const session = getSession(interaction.message.id);
   if (!session)
-    return interaction.reply({ content: config.MESSAGES.SESSION_INTROUVABLE, ephemeral: true });
+    return interaction.reply({ content: config.MESSAGES.SESSION_INTROUVABLE, flags: 64 });
   if (session.lancee)
-    return interaction.reply({ content: '⚠️ Cette session est déjà lancée.', ephemeral: true });
+    return interaction.reply({ content: '⚠️ Cette session est déjà lancée.', flags: 64 });
 
   const userId = interaction.user.id;
 
   if (interaction.customId === config.BUTTON_ID_REJOINDRE) {
     if (session.participants.includes(userId))
-      return interaction.reply({ content: config.MESSAGES.SESSION_DEJA_INSCRIT, ephemeral: true });
+      return interaction.reply({ content: config.MESSAGES.SESSION_DEJA_INSCRIT, flags: 64 });
     session.participants.push(userId);
   } else if (interaction.customId === config.BUTTON_ID_QUITTER) {
     if (!session.participants.includes(userId))
-      return interaction.reply({ content: config.MESSAGES.SESSION_PAS_INSCRIT, ephemeral: true });
+      return interaction.reply({ content: config.MESSAGES.SESSION_PAS_INSCRIT, flags: 64 });
     session.participants = session.participants.filter(id => id !== userId);
   }
 
@@ -664,13 +1047,13 @@ async function gererBoutonSession(interaction) {
     if (!interaction.replied) {
       return interaction.reply({
         content: '❌ Impossible de créer le salon privé de session.',
-        ephemeral: true,
+        flags: 64,
       });
     }
 
     return interaction.followUp({
       content: '❌ Impossible de créer le salon privé de session.',
-      ephemeral: true,
+      flags: 64,
     });
   }
 }

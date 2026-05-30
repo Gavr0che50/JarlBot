@@ -3,6 +3,7 @@ const path = require('path');
 
 const FICHIER_DEFIS = path.join(__dirname, '..', 'defis.json');
 const FICHIER_SESSIONS = path.join(__dirname, '..', 'sessions.json');
+const FICHIER_RESULTATS = path.join(__dirname, '..', 'resultats.json');
 
 // ========================================
 // 🛠️ Fonctions génériques (lecture/écriture)
@@ -72,6 +73,36 @@ function supprimerSession(messageId) {
 }
 
 // ========================================
+// 🏆 Résultats
+// ========================================
+
+function lireResultats() {
+  return lireFichier(FICHIER_RESULTATS);
+}
+
+function sauverResultat(userId, data) {
+  const resultats = lireResultats();
+  resultats[userId] = data;
+  ecrireFichier(FICHIER_RESULTATS, resultats);
+}
+
+function incrementWin(userId) {
+  const resultats = lireResultats();
+  const cur = resultats[userId] || { wins: 0, losses: 0 };
+  cur.wins = (cur.wins || 0) + 1;
+  resultats[userId] = cur;
+  ecrireFichier(FICHIER_RESULTATS, resultats);
+}
+
+function incrementLoss(userId) {
+  const resultats = lireResultats();
+  const cur = resultats[userId] || { wins: 0, losses: 0 };
+  cur.losses = (cur.losses || 0) + 1;
+  resultats[userId] = cur;
+  ecrireFichier(FICHIER_RESULTATS, resultats);
+}
+
+// ========================================
 // 📦 Exports
 // ========================================
 
@@ -86,4 +117,9 @@ module.exports = {
   sauverSession,
   getSession,
   supprimerSession,
+  // Résultats
+  lireResultats,
+  sauverResultat,
+  incrementWin,
+  incrementLoss,
 };
