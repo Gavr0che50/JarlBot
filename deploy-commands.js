@@ -108,8 +108,16 @@ const commands = [
         .setDescription('Infos complémentaires (optionnel)')
         .setRequired(false)
     ),
+];
 
-].map(cmd => cmd.toJSON());
+commands.push(
+  new SlashCommandBuilder()
+    .setName('cleanup')
+    .setDescription('Attention, supprime l\'intégralité des salons et des événements')
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+);
+
+module.exports = commands.map(cmd => cmd.toJSON());
 
 // ========================================
 // 🚀 Envoi des commandes à Discord

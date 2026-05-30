@@ -21,7 +21,7 @@ const schedule = require('node-schedule');
 const config = require('./config');
 const {
   sauverDefi, getDefi, supprimerDefi, lireDefis,
-  sauverSession, getSession, supprimerSession,
+  sauverSession, getSession, supprimerSession, lireSessions,
 } = require('./utils/storage');
 
 // ========================================
@@ -102,6 +102,7 @@ client.on('interactionCreate', async (interaction) => {
         case 'ping':    return interaction.reply('Pong ! 🏓');
         case 'defi':    return gererCommandeDefi(interaction);
         case 'session': return gererCommandeSession(interaction);
+        case 'cleanup': return gererCommandeCleanup(interaction);
       }
     }
 
@@ -481,6 +482,81 @@ async function gererCommandeSession(interaction) {
   const message = await interaction.reply({ embeds: [embed], components, fetchReply: true });
 
   sauverSession(message.id, session);
+}
+
+async function gererCommandeCleanup(interaction) {
+  if (!interaction.member?.permissions?.has(PermissionFlagsBits.Administrator)) {
+    return interaction.reply({ content: '❌ Commande réservée aux administrateurs.', ephemeral: true });
+  }
+
+  await interaction.deferReply({ ephemeral: true });
+
+  const defis = lireDefis();
+  const sessions = lireSessions();
+  let deletedChannels = 0;
+  let deletedEvents = 0;
+  let deletedDefis = 0;
+  let deletedSessions = 0;
+
+  for (const jobName of Object.keys(schedule.scheduledJobs)) {
+    schedule.cancelJob(jobName);
+  }
+
+  try {
+    for (const [messageId, defi] of Object.entries(defis)) {
+      if (defi.salonId) {
+        const salon = await client.channels.fetch(defi.salonId).catch(() => null);
+        if (salon) {
+          await salon.delete('Nettoyage administrateur').catch(() => null);
+          deletedChannels++;
+        }
+      }
+      if (defi.eventId && defi.guildId) {
+        const guild = await client.guilds.fetch(defi.guildId).catch(() => null);
+        if (guild) {
+          const event = await guild.scheduledEvents.fetch(defi.eventId).catch(() => null);
+          if (event) {
+            await event.delete().catch(() => null);
+            deletedEvents++;
+          }
+        }
+      }
+      supprimerDefi(messageId);
+      deletedDefis++;
+    }
+
+    for (const [messageId, session] of Object.entries(sessions)) {
+      if (session.salonId) {
+        const salon = await client.channels.fetch(session.salonId).catch(() => null);
+        if (salon) {
+          await salon.delete('Nettoyage administrateur').catch(() => null);
+          deletedChannels++;
+        }
+      }
+      if (session.eventId && session.guildId) {
+        const guild = await client.guilds.fetch(session.guildId).catch(() => null);
+        if (guild) {
+          const event = await guild.scheduledEvents.fetch(session.eventId).catch(() => null);
+          if (event) {
+            await event.delete().catch(() => null);
+            deletedEvents++;
+          }
+        }
+      }
+      supprimerSession(messageId);
+      deletedSessions++;
+    }
+
+    await interaction.editReply({
+      content:
+        `✅ Nettoyage terminé : ${deletedChannels} salon(s) supprimé(s), ` +
+        `${deletedEvents} événement(s) supprimé(s), ${deletedDefis} défi(s) supprimé(s), ` +
+        `${deletedSessions} session(s) supprimée(s).`,
+    });
+  } catch (err) {
+    console.error('❌ Erreur cleanup :', err);
+    await interaction.editReply({ content: '❌ Une erreur est survenue lors du nettoyage.', ephemeral: true });
+  }
 }
 
 function construireEmbedSession(session, lancee = false) {
