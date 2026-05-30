@@ -626,7 +626,7 @@ function programmerTachesSession(messageId, session) {
 
   planifier(
     `rappel_mp_session_${messageId}`,
-    new Date(dateSession.getTime() - config.RAPPEL_MP_AVANT_MATCH),
+    new Date(dateSession.getTime() - config.RAPPEL_MP_SESSION_AVANT),
     maintenant,
     () => envoyerRappelMPSession(messageId)
   );
