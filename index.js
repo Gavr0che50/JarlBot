@@ -117,7 +117,7 @@ client.on('interactionCreate', async (interaction) => {
 
     // --- Boutons ---
     if (interaction.isButton()) {
-      // Session join/leave
+      // Boutons session : rejoindre / quitter
       if (
         interaction.customId === config.BUTTON_ID_REJOINDRE ||
         interaction.customId === config.BUTTON_ID_QUITTER
@@ -530,7 +530,7 @@ function programmerTachesDefi(messageId, defi) {
 async function envoyerPromptResultat(messageId) {
   const defi = getDefi(messageId);
   if (!defi || !defi.salonId) return;
-  if (!defi.monEquipeId || !defi.adversaireId) return; // skip frees
+  if (!defi.monEquipeId || !defi.adversaireId) return; // ignorer les frees
 
   try {
     const salon = await client.channels.fetch(defi.salonId).catch(() => null);
@@ -555,7 +555,7 @@ Un joueur de chaque équipe doit confirmer la même équipe pour valider le rés
 
     defi.resultMessageId = prompt.id;
     defi.resultVotes = {};
-    defini = defi; // no-op to satisfy linter
+    defini = defi; // instruction factice pour satisfaire le linter
     sauverDefi(messageId, defi);
   } catch (err) {
     console.error('❌ Erreur envoi prompt résultat :', err);
@@ -563,7 +563,7 @@ Un joueur de chaque équipe doit confirmer la même équipe pour valider le rés
 }
 
 async function gererBoutonResultat(interaction) {
-  // customId: result_<messageId>_<teamId>
+  // customId : result_<messageId>_<teamId>
   const parts = interaction.customId.split('_');
   if (parts.length < 3) return interaction.reply({ content: '❌ Identifiant invalide.', ephemeral: true });
   const messageId = parts[1];
@@ -571,33 +571,47 @@ async function gererBoutonResultat(interaction) {
 
   const defi = getDefi(messageId);
   if (!defi) return interaction.reply({ content: '❌ Match introuvable.', ephemeral: true });
+  if (defi.resultAccepted) return interaction.reply({ content: '✅ Le résultat a déjà été validé.', ephemeral: true });
   if (!defi.resultVotes) defi.resultVotes = {};
   if (!defi.resultVotes[teamId]) defi.resultVotes[teamId] = [];
 
+  const otherTeamId = teamId === defi.monEquipeId ? defi.adversaireId : defi.monEquipeId;
   const userId = interaction.user.id;
-  if (!defi.resultVotes[teamId].includes(userId)) defi.resultVotes[teamId].push(userId);
+
+  // Refuse un vote si le même utilisateur a déjà voté pour l’autre équipe
+  for (const [side, voters] of Object.entries(defi.resultVotes)) {
+    if (side !== teamId && voters.includes(userId)) {
+      return interaction.reply({ content: '❌ Tu as déjà voté pour l’autre équipe. Ton vote ne peut pas compter des deux côtés.', ephemeral: true });
+    }
+  }
+
+  if (defi.resultVotes[teamId].includes(userId)) {
+    return interaction.reply({ content: '✅ Ton vote pour cette équipe est déjà enregistré.', ephemeral: true });
+  }
+
+  defi.resultVotes[teamId].push(userId);
   sauverDefi(messageId, defi);
 
-  // Vérifier si le vote contient au moins un membre de chaque équipe
-  const voters = defi.resultVotes[teamId];
-  let hasA = false, hasB = false;
-  for (const uid of voters) {
+  // Vérifier si le vote contient au moins un membre de chaque équipe sur le même choix
+  let winnerHasMember = false;
+  let loserHasMember = false;
+  for (const uid of defi.resultVotes[teamId]) {
     const m = await interaction.guild.members.fetch(uid).catch(() => null);
     if (!m) continue;
-    if (m.roles.cache.has(defi.monEquipeId)) hasA = true;
-    if (m.roles.cache.has(defi.adversaireId)) hasB = true;
+    if (m.roles.cache.has(teamId)) winnerHasMember = true;
+    if (m.roles.cache.has(otherTeamId)) loserHasMember = true;
   }
 
   await interaction.reply({ content: '✅ Vote enregistré.', ephemeral: true });
 
-  if (hasA && hasB) {
-    // Accept result
-    defi.result = { winnerRoleId: teamId, loserRoleId: (teamId === defi.monEquipeId ? defi.adversaireId : defi.monEquipeId) };
+  if (winnerHasMember && loserHasMember) {
+    // Valider le résultat
+    defi.result = { winnerRoleId: teamId, loserRoleId: otherTeamId };
     defi.resultAccepted = true;
     sauverDefi(messageId, defi);
 
-    // Apply results: credit wins/losses to role members (non-bot)
-    // Only record wins/losses for scrims (ignore free, mix, sessions)
+    // Appliquer les résultats : créditer victoires/défaites aux membres de rôle (hors bots)
+    // Ne comptabiliser que les scrims (ignorer free, mix, sessions)
     if (defi.type === 'scrim') {
       const guild = interaction.guild;
       const winnerRole = guild.roles.cache.get(defi.result.winnerRoleId);
@@ -615,17 +629,17 @@ async function gererBoutonResultat(interaction) {
           incrementLoss(m.id);
         }
       }
-      // Increment team stats
+      // Incrémenter les statistiques de l'équipe
       try {
         incrementTeamWin(defi.result.winnerRoleId);
         incrementTeamLoss(defi.result.loserRoleId);
       } catch (e) { console.error('Erreur incrément team stats', e); }
 
-      // Credit reinforcements: players invited as renforts for a team
+      // Créditer les renforts : joueurs invités comme renforts pour une équipe
       if (defi.renforts && Array.isArray(defi.renforts)) {
         for (const r of defi.renforts) {
           if (!r || !r.userId) continue;
-          // if equipeId matches winner and user is NOT already in winner role -> credit
+          // si equipeId correspond au gagnant et que l'utilisateur n'est PAS déjà dans le rôle gagnant -> créditer
           try {
             if (r.equipeId === defi.result.winnerRoleId) {
               const member = await interaction.guild.members.fetch(r.userId).catch(() => null);
@@ -646,7 +660,7 @@ async function gererBoutonResultat(interaction) {
       }
     }
 
-    // Edit original prompt to disable buttons
+    // Modifier le prompt original pour désactiver les boutons
     try {
       const channel = await client.channels.fetch(defi.salonId).catch(() => null);
       if (channel && defi.resultMessageId) {
@@ -663,7 +677,7 @@ async function gererBoutonResultat(interaction) {
       console.error('❌ Impossible de mettre à jour le message résultat :', err);
     }
 
-    // Notify salon
+    // Notifier le salon
     try {
       const channel = await client.channels.fetch(defi.salonId).catch(() => null);
       if (channel) {
@@ -895,7 +909,7 @@ async function gererCommandeRenfort(interaction) {
   if (!channel || channel.type !== ChannelType.GuildText) {
     return interaction.reply({ content: '❌ Impossible de récupérer le salon actuel.', flags: 64 });
   }
-  // Invite single user
+  // Inviter un seul utilisateur
   if (!cible.bot) {
     await channel.permissionOverwrites.edit(cible.id, {
       ViewChannel: true,
@@ -910,13 +924,13 @@ async function gererCommandeRenfort(interaction) {
       session.participants.push(cible.id);
     }
 
-    // For matches, store renfort info
+    // Pour les matchs, stocker les informations de renfort
     if (defi) {
       if (!defi.renforts) defi.renforts = [];
       if (equipeOption) {
         defi.renforts.push({ userId: cible.id, equipeId: equipeOption.id });
       } else {
-        // no team specified -> store with null equipeId
+        // aucune équipe précisée -> stocker avec equipeId à null
         defi.renforts.push({ userId: cible.id, equipeId: null });
       }
     }
