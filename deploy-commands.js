@@ -132,20 +132,15 @@ const commands = [
   // ----------------------------------------
   new SlashCommandBuilder()
     .setName('renfort')
-    .setDescription('Invite un joueur ou plusieurs dans un salon privé')
+    .setDescription('Invite un joueur dans un salon privé (1 seul)')
     .addUserOption(option =>
-      option.setName('joueur1')
-        .setDescription('Premier joueur à inviter')
+      option.setName('joueur')
+        .setDescription('Joueur à inviter')
         .setRequired(true)
     )
-    .addUserOption(option =>
-      option.setName('joueur2')
-        .setDescription('Deuxième joueur à inviter')
-        .setRequired(false)
-    )
-    .addUserOption(option =>
-      option.setName('joueur3')
-        .setDescription('Troisième joueur à inviter')
+    .addRoleOption(option =>
+      option.setName('equipe')
+        .setDescription('Équipe qui demande le renfort (optionnel — utile pour les scrims)')
         .setRequired(false)
     ),
 
@@ -158,6 +153,11 @@ const commands = [
     .addUserOption(option =>
       option.setName('joueur')
         .setDescription('Consulter le bilan d\'un autre joueur (optionnel)')
+        .setRequired(false)
+    )
+    .addRoleOption(option =>
+      option.setName('equipe')
+        .setDescription('Afficher le bilan d\'une équipe (optionnel)')
         .setRequired(false)
     ),
 

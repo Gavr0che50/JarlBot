@@ -77,29 +77,56 @@ function supprimerSession(messageId) {
 // ========================================
 
 function lireResultats() {
-  return lireFichier(FICHIER_RESULTATS);
+  const raw = lireFichier(FICHIER_RESULTATS);
+  return {
+    users: raw.users || {},
+    teams: raw.teams || {},
+  };
+}
+function saveResultats(all) {
+  ecrireFichier(FICHIER_RESULTATS, all);
 }
 
-function sauverResultat(userId, data) {
-  const resultats = lireResultats();
-  resultats[userId] = data;
-  ecrireFichier(FICHIER_RESULTATS, resultats);
+function getUserResult(userId) {
+  const r = lireResultats();
+  return r.users[userId] || { wins: 0, losses: 0 };
+}
+
+function getTeamResult(teamId) {
+  const r = lireResultats();
+  return r.teams[teamId] || { wins: 0, losses: 0 };
 }
 
 function incrementWin(userId) {
-  const resultats = lireResultats();
-  const cur = resultats[userId] || { wins: 0, losses: 0 };
+  const r = lireResultats();
+  const cur = r.users[userId] || { wins: 0, losses: 0 };
   cur.wins = (cur.wins || 0) + 1;
-  resultats[userId] = cur;
-  ecrireFichier(FICHIER_RESULTATS, resultats);
+  r.users[userId] = cur;
+  saveResultats(r);
 }
 
 function incrementLoss(userId) {
-  const resultats = lireResultats();
-  const cur = resultats[userId] || { wins: 0, losses: 0 };
+  const r = lireResultats();
+  const cur = r.users[userId] || { wins: 0, losses: 0 };
   cur.losses = (cur.losses || 0) + 1;
-  resultats[userId] = cur;
-  ecrireFichier(FICHIER_RESULTATS, resultats);
+  r.users[userId] = cur;
+  saveResultats(r);
+}
+
+function incrementTeamWin(teamId) {
+  const r = lireResultats();
+  const cur = r.teams[teamId] || { wins: 0, losses: 0 };
+  cur.wins = (cur.wins || 0) + 1;
+  r.teams[teamId] = cur;
+  saveResultats(r);
+}
+
+function incrementTeamLoss(teamId) {
+  const r = lireResultats();
+  const cur = r.teams[teamId] || { wins: 0, losses: 0 };
+  cur.losses = (cur.losses || 0) + 1;
+  r.teams[teamId] = cur;
+  saveResultats(r);
 }
 
 // ========================================
@@ -119,7 +146,11 @@ module.exports = {
   supprimerSession,
   // Résultats
   lireResultats,
-  sauverResultat,
+  saveResultats,
+  getUserResult,
+  getTeamResult,
   incrementWin,
   incrementLoss,
+  incrementTeamWin,
+  incrementTeamLoss,
 };

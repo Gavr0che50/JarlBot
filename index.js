@@ -23,7 +23,7 @@ const {
   sauverDefi, getDefi, supprimerDefi, lireDefis,
   sauverSession, getSession, supprimerSession, lireSessions,
 } = require('./utils/storage');
-const { lireResultats, incrementWin, incrementLoss } = require('./utils/storage');
+const { lireResultats, getUserResult, getTeamResult, incrementWin, incrementLoss, incrementTeamWin, incrementTeamLoss } = require('./utils/storage');
 
 // ========================================
 // 🔌 Initialisation du client Discord
@@ -579,6 +579,35 @@ async function gererBoutonResultat(interaction) {
           incrementLoss(m.id);
         }
       }
+      // Increment team stats
+      try {
+        incrementTeamWin(defi.result.winnerRoleId);
+        incrementTeamLoss(defi.result.loserRoleId);
+      } catch (e) { console.error('Erreur incrément team stats', e); }
+
+      // Credit reinforcements: players invited as renforts for a team
+      if (defi.renforts && Array.isArray(defi.renforts)) {
+        for (const r of defi.renforts) {
+          if (!r || !r.userId) continue;
+          // if equipeId matches winner and user is NOT already in winner role -> credit
+          try {
+            if (r.equipeId === defi.result.winnerRoleId) {
+              const member = await interaction.guild.members.fetch(r.userId).catch(() => null);
+              if (member && !member.roles.cache.has(defi.result.winnerRoleId)) {
+                incrementWin(r.userId);
+              }
+            }
+            if (r.equipeId === defi.result.loserRoleId) {
+              const member = await interaction.guild.members.fetch(r.userId).catch(() => null);
+              if (member && !member.roles.cache.has(defi.result.loserRoleId)) {
+                incrementLoss(r.userId);
+              }
+            }
+          } catch (e) {
+            console.error('Erreur crédit renfort:', e);
+          }
+        }
+      }
     }
 
     // Edit original prompt to disable buttons
@@ -611,10 +640,15 @@ async function gererBoutonResultat(interaction) {
 }
 
 async function gererCommandeResultat(interaction) {
+  const role = interaction.options.getRole('equipe');
+  if (role) {
+    const team = getTeamResult(role.id);
+    return interaction.reply({ content: `📊 Bilan de l'équipe ${role.name} :\n✅ Victoires : ${team.wins}\n❌ Défaites : ${team.losses}`, flags: 64 });
+  }
+
   const user = interaction.options.getUser('joueur') || interaction.user;
-  const resultats = lireResultats();
-  const r = resultats[user.id] || { wins: 0, losses: 0 };
-  await interaction.reply({ content: `📊 Bilan de ${user.tag} (hors tournoi de league) :\n✅ Victoires : ${r.wins}\n❌ Défaites : ${r.losses}`, flags: 64 });
+  const r = getUserResult(user.id);
+  await interaction.reply({ content: `📊 Bilan de ${user.tag} (scrims uniquement) :\n✅ Victoires : ${r.wins}\n❌ Défaites : ${r.losses}`, flags: 64 });
 }
 
 async function gererCommandePlanning(interaction) {
@@ -788,15 +822,10 @@ async function gererCommandeSession(interaction) {
 async function gererCommandeRenfort(interaction) {
   const channelId = interaction.channelId;
   const userId = interaction.user.id;
-  const options = [
-    interaction.options.getUser('joueur1'),
-    interaction.options.getUser('joueur2'),
-    interaction.options.getUser('joueur3'),
-  ].filter(Boolean);
+  const cible = interaction.options.getUser('joueur');
+  const equipeOption = interaction.options.getRole('equipe');
 
-  if (!options.length) {
-    return interaction.reply({ content: '❌ Indique au moins un joueur à inviter.', flags: 64 });
-  }
+  if (!cible) return interaction.reply({ content: '❌ Indique un joueur à inviter.', flags: 64 });
 
   const [defiId, defi] = trouverDefiParSalonId(channelId);
   const [sessionId, session] = !defi ? trouverSessionParSalonId(channelId) : [null, null];
@@ -824,40 +853,39 @@ async function gererCommandeRenfort(interaction) {
   if (!channel || channel.type !== ChannelType.GuildText) {
     return interaction.reply({ content: '❌ Impossible de récupérer le salon actuel.', flags: 64 });
   }
-
-  const invited = [];
-  for (const user of options) {
-    if (user.bot) continue;
-    await channel.permissionOverwrites.edit(user.id, {
+  // Invite single user
+  if (!cible.bot) {
+    await channel.permissionOverwrites.edit(cible.id, {
       ViewChannel: true,
       SendMessages: true,
       ReadMessageHistory: true,
     });
-    invited.push(user.id);
-    if (defi && defi.type === 'free' && !defi.participants.includes(user.id)) {
-      defi.participants.push(user.id);
+
+    if (defi && defi.type === 'free' && !defi.participants.includes(cible.id)) {
+      defi.participants.push(cible.id);
     }
-    if (session && !session.participants.includes(user.id)) {
-      session.participants.push(user.id);
+    if (session && !session.participants.includes(cible.id)) {
+      session.participants.push(cible.id);
     }
-  }
 
-  if (!invited.length) {
-    return interaction.reply({ content: '❌ Aucun joueur valide à inviter.', flags: 64 });
-  }
+    // For matches, store renfort info
+    if (defi) {
+      if (!defi.renforts) defi.renforts = [];
+      if (equipeOption) {
+        defi.renforts.push({ userId: cible.id, equipeId: equipeOption.id });
+      } else {
+        // no team specified -> store with null equipeId
+        defi.renforts.push({ userId: cible.id, equipeId: null });
+      }
+    }
 
-  if (defi && defiId) {
-    sauverDefi(defiId, defi);
-  }
-  if (session && sessionId) {
-    sauverSession(sessionId, session);
-  }
+    if (defi && defiId) sauverDefi(defiId, defi);
+    if (session && sessionId) sauverSession(sessionId, session);
 
-  const mentionText = invited.map(id => `<@${id}>`).join(' ');
-  await interaction.reply({
-    content: `✅ Invitation envoyée : ${mentionText}`,
-    flags: 64,
-  });
+    await interaction.reply({ content: `✅ Invitation envoyée : <@${cible.id}>`, flags: 64 });
+    return;
+  }
+  return interaction.reply({ content: '❌ Impossible d\'inviter un bot.', flags: 64 });
 }
 
 async function gererCommandeCleanup(interaction) {
