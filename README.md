@@ -29,9 +29,7 @@ Création automatique de **salons privés**, **événements Discord**, **rappels
 
 ### 🛠️ Outils admin
 - **`/renfort`** — Inviter un renfort dans un salon privé, avec une équipe cible pour les scrims
-- **`/resultat`** — Consulter ton bilan de scrims et tes participations par type
 - **`/planning`** — Lister les matchs/événements Discord à venir sur 7 jours
-- **`/cleanup`** — Supprimer tous les salons, événements et données du bot
 - **`/ping`** — Vérifier que le bot répond
 
 ---

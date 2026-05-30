@@ -145,20 +145,29 @@ const commands = [
     ),
 
   // ----------------------------------------
-  // 📊 /resultat — Consulter son bilan wins/loses
+  // 📊 /stat — Afficher des statistiques EVA pour un joueur ou une équipe
   // ----------------------------------------
   new SlashCommandBuilder()
-    .setName('resultat')
-    .setDescription('Consulte ton bilan de victoires/défaites (hors tournoi)')
-    .addUserOption(option =>
+    .setName('stat')
+    .setDescription('Affiche les statistiques EVA d’un joueur ou d’une équipe')
+    .addStringOption(option =>
       option.setName('joueur')
-        .setDescription('Consulter le bilan d\'un autre joueur (optionnel)')
+        .setDescription('Nom du joueur EVA')
         .setRequired(false)
     )
-    .addRoleOption(option =>
+    .addStringOption(option =>
       option.setName('equipe')
-        .setDescription('Afficher le bilan d\'une équipe (optionnel)')
+        .setDescription('Nom de l\'équipe EVA')
         .setRequired(false)
+    )
+    .addStringOption(option =>
+      option.setName('periode')
+        .setDescription('Période des statistiques')
+        .setRequired(false)
+        .addChoices(
+          { name: 'Saison en cours', value: 'current' },
+          { name: 'Toutes saisons', value: 'all' },
+        )
     ),
 
   // ----------------------------------------
@@ -208,13 +217,6 @@ const commands = [
         .setRequired(false)
     ),
 ];
-
-commands.push(
-  new SlashCommandBuilder()
-    .setName('cleanup')
-    .setDescription('Attention, supprime l\'intégralité des salons et des événements')
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-);
 
 module.exports = commands.map(cmd => cmd.toJSON());
 

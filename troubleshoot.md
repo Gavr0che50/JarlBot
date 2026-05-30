@@ -210,8 +210,8 @@ Le bot ne peut pas accéder à un salon ou une ressource.
 Le bot essaie d'accéder à un salon qui n'existe plus.
 
 **Solutions :**
-1. Lance `/cleanup` pour nettoyer les données obsolètes
-2. Supprime manuellement l'entrée dans `defis.json` ou `sessions.json`
+1. Supprime manuellement l'entrée obsolète dans `defis.json` ou `sessions.json`
+2. Redémarre le bot pour reprogrammer les tâches restantes
 
 ---
 
@@ -219,8 +219,8 @@ Le bot essaie d'accéder à un salon qui n'existe plus.
 Le bot cherche un message supprimé.
 
 **Solutions :**
-1. Lance `/cleanup` pour repartir propre
-2. Vide manuellement `defis.json` → remplace le contenu par `{}`
+1. Supprime manuellement l'entrée obsolète dans `defis.json` ou `sessions.json`
+2. Pour repartir propre, vide `defis.json` et `sessions.json` → remplace leur contenu par `{}`
 
 ---
 
@@ -257,7 +257,7 @@ Une erreur non gérée fait planter Node.js.
 - **Toujours redémarrer le terminal** après avoir installé Node.js
 - **Mode développeur Discord** : active-le pour copier les IDs facilement (**Paramètres** → **Avancé** → **Mode développeur**)
 - **Tester rapidement** : mets `SEUIL_VALIDATION: 1` dans `config.js` pour valider un défi avec un seul vote
-- **Vider les données de test** : lance `/cleanup` ou vide `defis.json` et `sessions.json` avec `{}`
+- **Vider les données de test** : vide `defis.json` et `sessions.json` avec `{}`
 - **Le bot plante ?** Lis toujours la **première ligne** du message d'erreur, pas la dernière
 - **Token révoqué ?** Va sur le portail → Reset Token → mets à jour `.env`
 

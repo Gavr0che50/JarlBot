@@ -3,7 +3,6 @@ const path = require('path');
 
 const FICHIER_DEFIS = path.join(__dirname, '..', 'defis.json');
 const FICHIER_SESSIONS = path.join(__dirname, '..', 'sessions.json');
-const FICHIER_RESULTATS = path.join(__dirname, '..', 'resultats.json');
 
 // ========================================
 // 🛠️ Fonctions génériques (lecture/écriture)
@@ -73,73 +72,6 @@ function supprimerSession(messageId) {
 }
 
 // ========================================
-// 🏆 Résultats
-// ========================================
-
-function lireResultats() {
-  const raw = lireFichier(FICHIER_RESULTATS);
-  return {
-    users: raw.users || {},
-    teams: raw.teams || {},
-  };
-}
-function saveResultats(all) {
-  ecrireFichier(FICHIER_RESULTATS, all);
-}
-
-function getUserResult(userId) {
-  const r = lireResultats();
-  return r.users[userId] || { wins: 0, losses: 0, participations: { free: 0, session: 0, mix: 0, scrim: 0 } };
-}
-
-function getTeamResult(teamId) {
-  const r = lireResultats();
-  return r.teams[teamId] || { wins: 0, losses: 0 };
-}
-
-function incrementWin(userId) {
-  const r = lireResultats();
-  const cur = r.users[userId] || { wins: 0, losses: 0, participations: { free: 0, session: 0, mix: 0, scrim: 0 } };
-  cur.wins = (cur.wins || 0) + 1;
-  r.users[userId] = cur;
-  saveResultats(r);
-}
-
-function incrementLoss(userId) {
-  const r = lireResultats();
-  const cur = r.users[userId] || { wins: 0, losses: 0, participations: { free: 0, session: 0, mix: 0, scrim: 0 } };
-  cur.losses = (cur.losses || 0) + 1;
-  r.users[userId] = cur;
-  saveResultats(r);
-}
-
-function incrementParticipation(userId, type) {
-  const r = lireResultats();
-  const cur = r.users[userId] || { wins: 0, losses: 0, participations: { free: 0, session: 0, mix: 0, scrim: 0 } };
-  if (!cur.participations) cur.participations = { free: 0, session: 0, mix: 0, scrim: 0 };
-  if (!cur.participations[type]) cur.participations[type] = 0;
-  cur.participations[type] = cur.participations[type] + 1;
-  r.users[userId] = cur;
-  saveResultats(r);
-}
-
-function incrementTeamWin(teamId) {
-  const r = lireResultats();
-  const cur = r.teams[teamId] || { wins: 0, losses: 0 };
-  cur.wins = (cur.wins || 0) + 1;
-  r.teams[teamId] = cur;
-  saveResultats(r);
-}
-
-function incrementTeamLoss(teamId) {
-  const r = lireResultats();
-  const cur = r.teams[teamId] || { wins: 0, losses: 0 };
-  cur.losses = (cur.losses || 0) + 1;
-  r.teams[teamId] = cur;
-  saveResultats(r);
-}
-
-// ========================================
 // 📦 Exports
 // ========================================
 
@@ -154,14 +86,4 @@ module.exports = {
   sauverSession,
   getSession,
   supprimerSession,
-  // Résultats
-  lireResultats,
-  saveResultats,
-  getUserResult,
-  getTeamResult,
-  incrementWin,
-  incrementLoss,
-  incrementTeamWin,
-  incrementTeamLoss,
-  incrementParticipation,
 };

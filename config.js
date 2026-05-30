@@ -64,6 +64,14 @@ module.exports = {
 
 
   // ========================================
+  // 🌐 API EVA
+  // ========================================
+
+  EVA_API_BASE_URL: process.env.EVA_API_BASE_URL || '',
+  EVA_API_TOKEN: process.env.EVA_API_TOKEN || '',
+
+
+  // ========================================
   // 💬 MESSAGES PERSONNALISABLES
   // ========================================
 
