@@ -1,3 +1,8 @@
 node_modules/
 .env
 resultats.json
+eva-data-cache*.json
+eva-cache.db*
+logs/
+.plan
+VULGARISATION.md

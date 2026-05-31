@@ -67,8 +67,25 @@ module.exports = {
   // 🌐 API EVA
   // ========================================
 
-  EVA_API_BASE_URL: process.env.EVA_API_BASE_URL || '',
-  EVA_API_TOKEN: process.env.EVA_API_TOKEN || '',
+  EVA_COMPETITIVE_API_BASE_URL:
+    process.env.EVA_COMPETITIVE_API_BASE_URL ||
+    'https://competitive.eva.gg/api',
+  EVA_GRAPHQL_URL:
+    process.env.EVA_GRAPHQL_URL ||
+    'https://api.eva.gg/graphql',
+  EVA_LOCAL_LEAGUES_CIRCUIT_ID: process.env.EVA_LOCAL_LEAGUES_CIRCUIT_ID || '2395738311350114303',
+  EVA_CAEN_REGION_ID: process.env.EVA_CAEN_REGION_ID || '2395741613538603007',
+  EVA_CAEN_RANKING_IDS: process.env.EVA_CAEN_RANKING_IDS || '2489142894001680383,2441507312469446655',
+  EVA_CAEN_TOURNAMENT_IDS: process.env.EVA_CAEN_TOURNAMENT_IDS || '',
+  EVA_CAEN_TOURNAMENT_LIMIT: Number(process.env.EVA_CAEN_TOURNAMENT_LIMIT || 3),
+  EVA_CAEN_MIN_MATCHES: Number(process.env.EVA_CAEN_MIN_MATCHES || 5),
+  EVA_PLAYER_MIN_MATCHES: Number(process.env.EVA_PLAYER_MIN_MATCHES || 5),
+  EVA_PUBLIC_PLAYER_BATCH_SIZE: Number(process.env.EVA_PUBLIC_PLAYER_BATCH_SIZE || 8),
+  EVA_PLAYER_SUGGESTIONS: process.env.EVA_PLAYER_SUGGESTIONS || '',
+  EVA_DATA_REFRESH_MS: Number(process.env.EVA_DATA_REFRESH_MS || 12 * 60 * 60 * 1000),
+  EVA_PLAYERS_CACHE_MS: Number(process.env.EVA_PLAYERS_CACHE_MS || 30 * 60 * 1000),
+  EVA_REQUEST_CACHE_MS: Number(process.env.EVA_REQUEST_CACHE_MS || 10 * 60 * 1000),
+  EVA_API_MIN_INTERVAL_MS: Number(process.env.EVA_API_MIN_INTERVAL_MS || 117),
 
 
   // ========================================

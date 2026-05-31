@@ -29,6 +29,10 @@ Création automatique de **salons privés**, **événements Discord**, **rappels
 
 ### 🛠️ Outils admin
 - **`/renfort`** — Inviter un renfort dans un salon privé, avec une équipe cible pour les scrims
+- **`/stat`** — Afficher le KDA EVA d'un joueur public avec 5+ matchs all-time
+- **`/stat-equipe`** — Afficher les stats d'une équipe EVA depuis le cache local, avec son classement local quand disponible
+- **`/classement`** — Afficher le classement local EVA par division, via un site sélectionné
+- **`/top`** — Afficher le top 10 des joueurs EVA publics sur la saison en cours
 - **`/planning`** — Lister les matchs/événements Discord à venir sur 7 jours
 - **`/ping`** — Vérifier que le bot répond
 
@@ -36,7 +40,7 @@ Création automatique de **salons privés**, **événements Discord**, **rappels
 
 ## 📋 Prérequis
 
-- **Node.js 18+** installé ([télécharger ici](https://nodejs.org))
+- **Node.js 24+** installé ([télécharger ici](https://nodejs.org)) - `node:sqlite` est utilisé pour le cache local
 - Un **bot Discord** créé sur le [Portail Développeurs Discord](https://discord.com/developers/applications)
 - Les **intents privilégiés** activés sur le bot :
   - `SERVER MEMBERS INTENT`
@@ -58,6 +62,8 @@ cd JarlBot
 npm install
 ```
 
+Le bot utilise la base SQLite integree a Node.js, donc il n'y a pas de package SQLite natif a compiler.
+
 ### 3. Configurer les variables d'environnement
 
 Crée un fichier `.env` à la racine du projet :
@@ -67,6 +73,18 @@ DISCORD_TOKEN=ton_token_secret
 CLIENT_ID=id_de_ton_application
 GUILD_ID=id_de_ton_serveur
 CATEGORIE_DEFIS_ID=id_de_la_categorie_pour_les_salons
+EVA_COMPETITIVE_API_BASE_URL=https://competitive.eva.gg/api
+EVA_GRAPHQL_URL=https://api.eva.gg/graphql
+EVA_LOCAL_LEAGUES_CIRCUIT_ID=2395738311350114303
+EVA_CAEN_REGION_ID=2395741613538603007
+EVA_CAEN_RANKING_IDS=2489142894001680383,2441507312469446655
+EVA_CAEN_MIN_MATCHES=5
+EVA_PLAYER_MIN_MATCHES=5
+EVA_PUBLIC_PLAYER_BATCH_SIZE=8
+EVA_DATA_REFRESH_MS=43200000
+EVA_PLAYERS_CACHE_MS=1800000
+EVA_REQUEST_CACHE_MS=600000
+EVA_API_MIN_INTERVAL_MS=117
 ```
 
 > ⚠️ **Ne partage JAMAIS ton token Discord.** S'il fuite, va dans le portail développeur et clique sur **Reset Token**.
@@ -100,6 +118,20 @@ Toute la configuration éditable se trouve dans **`config.js`** :
 | `RAPPEL_24H_AVANT_MATCH` | Rappel dans le salon (24h avant) |
 | `RAPPEL_1H_AVANT_MATCH` | Rappel dans le salon (1h avant) |
 | `DELAI_SUPPRESSION_SALON` | Délai avant suppression du salon (48h après) |
+| `EVA_COMPETITIVE_API_BASE_URL` | URL de base de l'API EVA Competitive |
+| `EVA_GRAPHQL_URL` | Endpoint GraphQL public utilisé par app.eva.gg |
+| `EVA_LOCAL_LEAGUES_CIRCUIT_ID` | Circuit Local Leagues EVA utilisé pour découvrir les tournois JARL |
+| `EVA_CAEN_REGION_ID` | Région Competitive EVA de Caen |
+| `EVA_CAEN_RANKING_IDS` | IDs de rankings JARL Caen, séparés par des virgules |
+| `EVA_CAEN_TOURNAMENT_IDS` | Optionnel : IDs de tournois JARL Caen à utiliser au lieu de l'auto-détection |
+| `EVA_CAEN_MIN_MATCHES` | Ancienne garde de matches pour l'autocomplete `/stat` (compatibilité) |
+| `EVA_PLAYER_SUGGESTIONS` | Fallback manuel de pseudos `Pseudo#123456`, séparés par des virgules |
+| `EVA_PLAYER_MIN_MATCHES` | Ancienne garde du cache joueurs, conservée pour compatibilité |
+| `EVA_PUBLIC_PLAYER_BATCH_SIZE` | Nombre de profils publics récupérés par requête GraphQL groupée |
+| `EVA_DATA_REFRESH_MS` | Fréquence de mise à jour du snapshot local EVA (12h par défaut) |
+| `EVA_PLAYERS_CACHE_MS` | Durée des caches mémoire EVA intermédiaires |
+| `EVA_REQUEST_CACHE_MS` | Durée du cache des appels EVA unitaires |
+| `EVA_API_MIN_INTERVAL_MS` | Délai minimum entre deux appels EVA pour éviter les 429 |
 | `MESSAGES.*` | Tous les textes du bot (personnalisables) |
 
 ---
@@ -116,8 +148,9 @@ JarlBot/
 ├── index.js                ← Code principal du bot
 ├── defis.json              ← Données des défis (auto-généré)
 ├── sessions.json           ← Données des sessions (auto-généré)
+├── eva-cache.db            ← Base locale SQLite du cache EVA
 └── utils/
-    └── storage.js          ← Lecture/écriture des fichiers JSON
+    └── eva.js              ← API EVA + lecture/écriture du cache local
 ```
 
 ---
@@ -166,5 +199,6 @@ ISC — Usage personnel et communautaire libre.
 ## 💡 Notes
 
 - Les fichiers `defis.json` et `sessions.json` sont créés automatiquement
+- Le cache EVA persistant est dans `eva-cache.db` ; si tu déplaces le bot sur un autre PC, copie aussi ce fichier pour garder l'historique local
 - Les tâches programmées (rappels, nettoyage) sont **persistantes** : si le bot redémarre, elles sont reprogrammées au boot
 - `.env` ne doit **jamais** être commit sur Git

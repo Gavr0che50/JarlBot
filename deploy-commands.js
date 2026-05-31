@@ -119,7 +119,7 @@ const commands = [
     .addStringOption(option =>
       option.setName('niveau-attendu')
         .setDescription('Niveau attendu pour un free')
-        .setRequired(false)
+        .setRequired(true)
         .addChoices(
           { name: 'Débutant', value: 'Débutant' },
           { name: 'Intermédiaire', value: 'Intermédiaire' },
@@ -140,39 +140,50 @@ const commands = [
     )
     .addRoleOption(option =>
       option.setName('equipe')
-        .setDescription('Équipe qui demande le renfort (optionnel — utile pour les scrims)')
-        .setRequired(false)
+        .setDescription('Équipe qui demande le renfort')
+        .setRequired(true)
     ),
 
   // ----------------------------------------
-  // 📊 /stat — Afficher des statistiques EVA pour un joueur ou une équipe
+  // 📊 /stat — Afficher le KDA EVA d'un joueur
   // ----------------------------------------
   new SlashCommandBuilder()
     .setName('stat')
-    .setDescription('Affiche les statistiques EVA d’un joueur ou d’une équipe')
+    .setDescription('Affiche le KDA EVA d’un joueur')
     .addStringOption(option =>
       option.setName('joueur')
         .setDescription('Nom du joueur EVA')
-        .setRequired(false)
-    )
-    .addStringOption(option =>
-      option.setName('equipe')
-        .setDescription('Nom de l\'équipe EVA')
-        .setRequired(false)
-    )
-    .addStringOption(option =>
-      option.setName('periode')
-        .setDescription('Période des statistiques')
-        .setRequired(false)
-        .addChoices(
-          { name: 'Saison en cours', value: 'current' },
-          { name: 'Toutes saisons', value: 'all' },
-        )
+        .setRequired(true)
+        .setAutocomplete(true)
     ),
 
   // ----------------------------------------
   // 🗓️ /planning — Liste les événements à venir (7 jours)
   // ----------------------------------------
+  new SlashCommandBuilder()
+    .setName('stat-equipe')
+    .setDescription('Affiche les stats d’une équipe')
+    .addStringOption(option =>
+      option.setName('equipe')
+        .setDescription('Nom ou tag de l’équipe')
+        .setRequired(true)
+        .setAutocomplete(true)
+    ),
+
+  new SlashCommandBuilder()
+    .setName('classement')
+    .setDescription('Affiche le classement local EVA par division')
+    .addStringOption(option =>
+      option.setName('site')
+        .setDescription('Site ou ville EVA')
+        .setRequired(true)
+        .setAutocomplete(true)
+    ),
+
+  new SlashCommandBuilder()
+    .setName('top')
+    .setDescription('Affiche le top 10 des joueurs EVA publics sur la saison en cours'),
+
   new SlashCommandBuilder()
     .setName('planning')
     .setDescription('Liste les matchs / événements à venir (7 jours)'),
@@ -213,8 +224,8 @@ const commands = [
     )
     .addStringOption(option =>
       option.setName('description')
-        .setDescription('Infos complémentaires (optionnel)')
-        .setRequired(false)
+        .setDescription('Infos complémentaires')
+        .setRequired(true)
     ),
 ];
 
