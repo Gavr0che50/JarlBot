@@ -122,25 +122,7 @@ function mask(value) {
   return `${String(value).slice(0, 4)}...${String(value).slice(-4)}`;
 }
 
-function buildInviteUrl(clientId) {
-  if (!clientId) return '';
-  const permissions = [
-    1n << 4n,  // ManageChannels
-    1n << 6n,  // AddReactions
-    1n << 10n, // ViewChannel
-    1n << 11n, // SendMessages
-    1n << 16n, // ReadMessageHistory
-    1n << 17n, // MentionEveryone
-    1n << 28n, // ManageRoles
-    1n << 33n, // ManageEvents
-  ].reduce((sum, bit) => sum + bit, 0n);
-  const params = new URLSearchParams({
-    client_id: clientId,
-    permissions: permissions.toString(),
-    scope: 'bot applications.commands',
-  });
-  return `https://discord.com/oauth2/authorize?${params.toString()}`;
-}
+// Note: invite link generation removed from frontend by design.
 
 function getDbStatus() {
   try {
@@ -292,19 +274,18 @@ const html = `<!doctype html>
       min-height: 100vh;
       letter-spacing: .01em;
     }
-    header {
-      padding: 40px min(6vw, 72px) 18px;
-      display: flex;
-      justify-content: space-between;
-      gap: 24px;
-      align-items: flex-end;
-    }
-    h1 {
-      font-size: clamp(2.6rem, 5.2vw, 5rem);
-      line-height: .88;
-      margin: 0;
-      letter-spacing: -.08em;
-      text-shadow: 0 0 28px rgba(184,77,255,.24);
+        return {
+          env: {
+            CLIENT_ID: env.CLIENT_ID || '',
+            GUILD_ID: env.GUILD_ID || '',
+            CATEGORIE_DEFIS_ID: env.CATEGORIE_DEFIS_ID || '',
+            DISCORD_TOKEN: mask(env.DISCORD_TOKEN),
+            EVA_ACCESS_TOKEN: mask(env.EVA_ACCESS_TOKEN),
+          },
+          botRunning: Boolean(botProcess && !botProcess.killed),
+          refreshRunning: Boolean(refreshProcess && !refreshProcess.killed),
+          db: getDbStatus(),
+        };
     }
     .subtitle {
       color: var(--muted);
@@ -529,12 +510,10 @@ const html = `<!doctype html>
           <strong>Lancer le bot</strong>
           <span>Le lancement enregistre aussi les slash commands.</span>
         </div>
-        <div class="invite-line" style="margin-left:auto">
-          <button class="brand" onclick="saveAndStart()">Sauvegarder et lancer</button>
-          <button class="secondary" onclick="saveConfig()">Sauvegarder</button>
-          <button class="secondary" onclick="copyInvite()">Copier invitation</button>
-          <a class="button secondary" id="inviteLink" href="#" target="_blank">Ouvrir invitation</a>
-        </div>
+              <div class="invite-line" style="margin-left:auto">
+                <button class="brand" onclick="saveAndStart()">Sauvegarder et lancer</button>
+                <button class="danger" onclick="stopLauncher()">Arrêter</button>
+              </div>
       </div>
     </section>
     <section class="footer-panel">
@@ -580,8 +559,7 @@ const html = `<!doctype html>
       pill.querySelector('span.status-copy span').textContent = status.botRunning ? 'Pret a recevoir des commandes' : 'Prend quelques secondes au demarrage';
       for (const key of ['CLIENT_ID', 'GUILD_ID', 'CATEGORIE_DEFIS_ID']) document.getElementById(key).value = status.env[key] || '';
       document.getElementById('DISCORD_TOKEN').placeholder = status.env.DISCORD_TOKEN ? 'Token deja configure (' + status.env.DISCORD_TOKEN + ')' : 'Colle le token Discord ici';
-      inviteUrl = status.inviteUrl || '';
-      document.getElementById('inviteLink').href = inviteUrl || '#';
+      // invite links are not displayed in the launcher UI by design
     }
     async function loadLogs() {
       const kind = document.getElementById('logKind').value;
@@ -610,10 +588,16 @@ const html = `<!doctype html>
       await loadStatus();
       await loadLogs().catch(() => {});
     }
-    async function copyInvite() {
-      if (!inviteUrl) return setLast('Renseigne le Client ID avant de copier le lien.', 'warn');
-      await navigator.clipboard.writeText(inviteUrl);
-      setLast('Lien invitation copie.', 'ok');
+    async function stopLauncher() {
+      try {
+        // stop bot if running
+        await api('/api/bot/stop', { method: 'POST' }).catch(() => {});
+        // request launcher to exit
+        await api('/api/launcher/stop', { method: 'POST' });
+        setLast('Arrêt demandé. Le launcher va se fermer.', 'warn');
+      } catch (err) {
+        setLast('Erreur arrêt: ' + err.message, 'bad');
+      }
     }
     loadStatus().catch(err => setLast(err.message, 'bad'));
     loadLogs().catch(() => {});
@@ -690,6 +674,21 @@ async function handle(req, res) {
     if (req.method === 'POST' && url.pathname === '/api/export') {
       const result = await runExport();
       json(res, result, result.code === 0 ? 200 : 500);
+      return;
+    }
+    if (req.method === 'POST' && url.pathname === '/api/launcher/stop') {
+      json(res, { ok: true, message: 'Arret du launcher demande.' });
+      setTimeout(() => {
+        try {
+          server.close(() => {
+            log('Launcher HTTP server ferme.');
+            process.exit(0);
+          });
+        } catch (e) {
+          log('Erreur lors de la fermeture du launcher: ' + (e && e.message));
+          process.exit(0);
+        }
+      }, 300);
       return;
     }
     if (req.method === 'GET' && url.pathname === '/api/logs') {

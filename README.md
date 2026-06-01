@@ -1,8 +1,13 @@
-# 🤖 JarlBot V1.5
+# 🤖 JarlBot V1.6
 
 Bot Discord open source pour gérer des **défis d'équipes**, des **sessions spéciales** et des **statistiques EVA**.
 
 Création automatique de **salons privés**, **événements Discord**, **rappels programmés** (48h en MP, 24h et 1h dans le salon), validation par votes, et nettoyage automatique après les matchs.
+
+> **Avant toute installation sur un autre serveur, crée ton propre bot Discord dans le Portail Développeurs.**
+> Crée un nouveau bot dédié à ton serveur (NE RÉUTILISE PAS un token existant). Active les intents nécessaires, récupère ton `CLIENT_ID` et ton `DISCORD_TOKEN`, puis invite ce bot sur ton serveur avec les permissions requises.
+>
+> IMPORTANT — utilise un bot que tu contrôles : ne partage pas le `DISCORD_TOKEN`, et ne tente pas d'utiliser un token tiers. Le launcher ne génère plus de lien d'invitation côté interface : crée et invite ton application depuis le portail développeur.
 
 ---
 
