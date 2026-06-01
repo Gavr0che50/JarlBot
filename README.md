@@ -29,7 +29,7 @@ Création automatique de **salons privés**, **événements Discord**, **rappels
 - Lancement automatique quand le nombre de joueurs est atteint
 - Salon privé + rappel MP 48h avant
 
-### 🛠️ Outils admin
+### 🛠️ Outils
 - **`/help`** — Afficher le guide simple des commandes et des bons usages
 - **`/renfort`** — Inviter un renfort dans un salon privé, avec une équipe cible pour les scrims
 - **`/stat`** — Afficher les stats EVA d'un joueur indexé: matchs, KDA, équipe, ligue locale, rang local et tendance vs saison précédente
