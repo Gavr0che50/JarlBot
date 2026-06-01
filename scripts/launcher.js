@@ -273,20 +273,7 @@ const html = `<!doctype html>
         linear-gradient(135deg, #090a0f 0%, #0f1220 45%, #11131b 100%);
       min-height: 100vh;
       letter-spacing: .01em;
-    }
-        return {
-          env: {
-            CLIENT_ID: env.CLIENT_ID || '',
-            GUILD_ID: env.GUILD_ID || '',
-            CATEGORIE_DEFIS_ID: env.CATEGORIE_DEFIS_ID || '',
-            DISCORD_TOKEN: mask(env.DISCORD_TOKEN),
-            EVA_ACCESS_TOKEN: mask(env.EVA_ACCESS_TOKEN),
-          },
-          botRunning: Boolean(botProcess && !botProcess.killed),
-          refreshRunning: Boolean(refreshProcess && !refreshProcess.killed),
-          db: getDbStatus(),
-        };
-    }
+      }
     .subtitle {
       color: var(--muted);
       max-width: 760px;
@@ -625,7 +612,6 @@ async function handle(req, res) {
           DISCORD_TOKEN: mask(env.DISCORD_TOKEN),
           EVA_ACCESS_TOKEN: mask(env.EVA_ACCESS_TOKEN),
         },
-        inviteUrl: buildInviteUrl(env.CLIENT_ID),
         botRunning: Boolean(botProcess && !botProcess.killed),
         refreshRunning: Boolean(refreshProcess && !refreshProcess.killed),
         db: getDbStatus(),
