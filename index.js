@@ -33,6 +33,7 @@ const {
   searchPlayers,
   searchTeams,
   searchLocations,
+  estimateRefreshETA,
 } = require('./utils/eva-v2');
 
 // ========================================
@@ -111,23 +112,48 @@ function genererNomSalonSession(session) {
 // 🚀 Démarrage du bot
 // ========================================
 
-function handleReady() {
+async function handleReady() {
   console.log(`✅ Bot connecté en tant que ${client.user.tag} !`);
   reprogrammerTaches();
-  ensureEvaV2Fresh()
-    .then(status => console.log(`Cache EVA v2 pret (${status.teams} equipes, ${status.players} joueurs indexes).`))
-    .catch(err => console.error('Impossible de precharger le cache EVA v2 :', err));
+
+  try {
+    const eta = await estimateRefreshETA({ full: true }).catch(() => ({ estimatedMs: 0, estimatedRequests: 0 }));
+    if (eta && eta.estimatedMs > 0) {
+      console.log(`⏳ Import initial EVA v2 estimé ~ ${Math.round(eta.estimatedMs / 60000)} min (${eta.estimatedRequests} requêtes)`);
+    } else {
+      console.log('⏳ Import initial EVA v2 : estimation non disponible.');
+    }
+
+    const start = Date.now();
+    const status = await ensureEvaV2Fresh({ force: true });
+    const duration = Date.now() - start;
+    console.log(`Cache EVA v2 pret (${status.teams} equipes, ${status.players} joueurs indexes) — terminé en ${Math.round(duration/1000)}s.`);
+  } catch (err) {
+    console.error('Impossible de precharger le cache EVA v2 :', err);
+  }
+
   demarrerRefreshEvaV2Periodique();
 }
 
-client.once('clientReady', handleReady);
+client.once('ready', handleReady);
 
 function demarrerRefreshEvaV2Periodique() {
   const intervalMs = Number(config.EVA_V2_CACHE_TTL_MS || 24 * 60 * 60 * 1000);
   const timer = setInterval(() => {
-    ensureEvaV2Fresh({ force: true })
-      .then(status => console.log(`Refresh EVA v2 periodique termine (${status.teams} equipes, ${status.players} joueurs).`))
-      .catch(err => console.error('Refresh EVA v2 periodique en erreur :', err));
+    (async () => {
+      try {
+        const eta = await estimateRefreshETA({ full: false }).catch(() => ({ estimatedMs: 0, estimatedRequests: 0 }));
+        if (eta && eta.estimatedMs > 0) {
+          console.log(`⏳ Refresh periodique EVA v2 estimé ~ ${Math.round(eta.estimatedMs / 60000)} min (${eta.estimatedRequests} requêtes)`);
+        }
+        const start = Date.now();
+        const status = await ensureEvaV2Fresh({ force: true });
+        const duration = Date.now() - start;
+        console.log(`Refresh EVA v2 periodique termine (${status.teams} equipes, ${status.players} joueurs) — ${Math.round(duration/1000)}s.`);
+      } catch (err) {
+        console.error('Refresh EVA v2 periodique en erreur :', err);
+      }
+    })();
   }, intervalMs);
   if (typeof timer.unref === 'function') timer.unref();
 }

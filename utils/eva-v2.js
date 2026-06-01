@@ -292,6 +292,55 @@ async function fetchRange(pathname, unit, pageSize = 100) {
   return items;
 }
 
+async function fetchCount(pathname, unit) {
+  await throttleHttp();
+  const response = await fetch(`${COMPETITIVE_BASE_URL}${pathname}`, {
+    headers: {
+      Accept: 'application/json',
+      Range: `${unit}=0-0`,
+    },
+    signal: AbortSignal.timeout(HTTP_TIMEOUT_MS),
+  });
+
+  if (!response.ok && response.status !== 206 && response.status !== 200) {
+    return 0;
+  }
+
+  const range = parseContentRange(response.headers.get('content-range'));
+  return range.total || 0;
+}
+
+/**
+ * Estimate ETA for a full or partial EVA v2 refresh.
+ * Returns { estimatedMs, estimatedRequests } (approximate)
+ */
+async function estimateRefreshETA({ full = false } = {}) {
+  try {
+    const rankingsCount = await fetchCount('/circuit-rankings', 'rankings').catch(() => 0);
+    const teamsCount = await fetchCount('/teams', 'teams').catch(() => 0);
+
+    // estimate number of roster hydration operations
+    const rosterOps = Math.min(teamsCount, full ? TEAM_MEMBER_FULL_REFRESH_LIMIT : TEAM_MEMBER_REFRESH_LIMIT);
+
+    // estimate major players ops
+    const majorPlayerOps = full ? MAJOR_PLAYER_FULL_REFRESH_LIMIT : MAJOR_PLAYER_REFRESH_LIMIT;
+
+    // requests for rankings and teams (page size ~50)
+    const requestsForRankings = Math.ceil(rankingsCount / 50) || 1;
+    const requestsForTeams = Math.ceil(teamsCount / 50) || 1;
+
+    const estimatedRequests = requestsForRankings + requestsForTeams + rosterOps + majorPlayerOps;
+
+    // assume each request costs at least HTTP_MIN_INTERVAL_MS plus small overhead
+    const perRequestMs = HTTP_MIN_INTERVAL_MS + 250;
+
+    const estimatedMs = estimatedRequests * perRequestMs;
+    return { estimatedMs, estimatedRequests };
+  } catch (err) {
+    return { estimatedMs: 0, estimatedRequests: 0 };
+  }
+}
+
 async function graphql(query, variables = {}, token = process.env.EVA_ACCESS_TOKEN || null) {
   const headers = {
     'Content-Type': 'application/json',
@@ -1192,4 +1241,6 @@ module.exports = {
   getEvaV2Status,
   resetEvaV2Cache,
   refreshMajorPlayerStats,
+  fetchCount,
+  estimateRefreshETA,
 };
