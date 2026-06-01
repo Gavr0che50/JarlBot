@@ -25,12 +25,16 @@ const {
 } = require('./utils/storage');
 const {
   getAllEvaTeams,
-  getCaenPublicPlayers,
+  getAllEvaTeamsHybrid,
+  getCachedCompetitivePlayers,
+  getCachedCompetitivePlayersHybrid,
   getCaenTeamStats,
   getLocalLeagueStandings,
+  getLocalLeagueStandingsHybrid,
   findLocalLeagueStanding,
   getPlayerKdaStats,
   getTopPlayers,
+  ensureEvaCacheFresh,
   startEvaCacheRefreshScheduler,
 } = require('./utils/eva');
 
@@ -98,9 +102,9 @@ function genererNomSalonSession(session) {
 function handleReady() {
   console.log(`✅ Bot connecté en tant que ${client.user.tag} !`);
   reprogrammerTaches();
-getCaenPublicPlayers()
-    .then(players => console.log(`📊 Cache joueurs EVA chargé (${players.length} joueur(s)).`))
-    .catch(err => console.error('❌ Impossible de précharger les joueurs EVA Caen :', err));
+getCachedCompetitivePlayers()
+    .then(players => console.log(`📊 Cache joueurs compétitifs EVA chargé (${players.length} joueur(s)).`))
+    .catch(err => console.error('❌ Impossible de précharger les joueurs compétitifs EVA :', err));
 }
 
 client.once('clientReady', handleReady);
@@ -550,6 +554,7 @@ async function gererCommandeStat(interaction) {
   await interaction.deferReply({ flags: 64 });
 
   try {
+    await ensureEvaCacheFresh({ maxAgeMs: 24 * 60 * 60 * 1000 });
     const data = await getPlayerKdaStats(joueur);
     const content = [`📊 **Stats EVA de ${data.playerName || joueur}**`];
     const current = data.current || {};
@@ -589,7 +594,7 @@ async function gererAutocompleteStat(interaction) {
   const focused = interaction.options.getFocused().toLowerCase();
 
   try {
-    const players = await getCaenPublicPlayers();
+    const players = await getCachedCompetitivePlayersHybrid({ maxAgeMs: 24 * 60 * 60 * 1000 });
     const choices = players
       .filter(player =>
         player.name.toLowerCase().includes(focused) ||
@@ -619,7 +624,7 @@ async function gererAutocompleteStatEquipe(interaction) {
   const focused = interaction.options.getFocused().toLowerCase();
 
   try {
-    const teams = getAllEvaTeams();
+    const teams = await getAllEvaTeamsHybrid({ maxAgeMs: 24 * 60 * 60 * 1000 });
     const choices = teams
       .filter(team =>
         team.name.toLowerCase().includes(focused) ||
@@ -644,7 +649,7 @@ async function gererAutocompleteClassement(interaction) {
   const focused = interaction.options.getFocused().toLowerCase();
 
   try {
-    const standings = getLocalLeagueStandings();
+    const standings = await getLocalLeagueStandingsHybrid({ maxAgeMs: 24 * 60 * 60 * 1000 });
     const choices = standings
       .filter(standing =>
         (standing.regionName || '').toLowerCase().includes(focused) ||
@@ -672,6 +677,7 @@ async function gererCommandeStatEquipe(interaction) {
   await interaction.deferReply({ flags: 64 });
 
   try {
+    await ensureEvaCacheFresh({ maxAgeMs: 24 * 60 * 60 * 1000 });
     const team = await getCaenTeamStats(equipe);
     const teamContent = [
       `📊 **Stats équipe EVA - ${team.name}**`,
@@ -685,7 +691,7 @@ async function gererCommandeStatEquipe(interaction) {
     ];
 
     if (team.aliases?.length) teamContent.push(`🏷️ Tag(s) détecté(s) : **${team.aliases.join(', ')}**`);
-    if (team.lineup?.length) teamContent.push(`👥 Lineup connue : ${team.lineup.slice(0, 8).join(', ')}`);
+    if (team.lineup?.length) teamContent.push(`👥 Lineup connue : ${team.lineup.slice(0, Number(config.EVA_TEAM_LINEUP_DISPLAY_LIMIT || 8)).join(', ')}`);
     if (team.lastMatch?.opponents?.length) {
       const match = team.lastMatch.opponents
         .map(opponent => `${opponent.name} ${opponent.score ?? '-'}`)
@@ -706,7 +712,15 @@ async function gererCommandeClassement(interaction) {
   await interaction.deferReply({ flags: 64 });
 
   try {
-    const selectedStanding = findLocalLeagueStanding(site);
+    const query = String(site || '').trim().toLowerCase();
+    const standings = await getLocalLeagueStandingsHybrid({ maxAgeMs: 24 * 60 * 60 * 1000 });
+    const selectedStanding = standings.find(standing =>
+      standing.regionId === site ||
+      (standing.regionName || '').toLowerCase() === query ||
+      (standing.rankingName || '').toLowerCase() === query ||
+      (standing.regionName || '').toLowerCase().includes(query) ||
+      (standing.rankingName || '').toLowerCase().includes(query)
+    );
     if (!selectedStanding) {
       return interaction.editReply({ content: `❌ Site introuvable dans le cache EVA local : **${site}**.` });
     }
@@ -751,12 +765,17 @@ async function gererCommandeTop(interaction) {
   await interaction.deferReply({ flags: 64 });
 
   try {
-    const players = getTopPlayers(10);
+    const cachedPlayers = await getCachedCompetitivePlayersHybrid({ maxAgeMs: 24 * 60 * 60 * 1000 });
+    const players = getTopPlayers(Number(config.EVA_TOP_PLAYERS_LIMIT || 10));
     if (players.length === 0) {
       return interaction.editReply({ content: '❌ Aucun top joueur disponible dans le cache EVA local.' });
     }
 
-    const lines = ['🏆 **Top 10 joueurs EVA - saison en cours**'];
+    const lines = [
+      `🏆 **Top ${Number(config.EVA_TOP_PLAYERS_LIMIT || 10)} joueurs compétitifs EVA - saison en cours**`,
+      `👥 **Total joueurs compétitifs affichés dans le top : ${players.length}**`,
+      `**(DEBUG) : Nombre total de joueurs actuel dans le cache : ${cachedPlayers.length}**`,
+    ];
     players.forEach((player, index) => {
       lines.push(
         `${index + 1}. **${player.name}** (${player.username}) - KDA **${formatNumber(player.current.kda)}** ` +
@@ -775,13 +794,13 @@ async function gererCommandePlanning(interaction) {
   try {
     const events = await interaction.guild.scheduledEvents.fetch();
     const now = new Date();
-    const max = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const max = new Date(now.getTime() + Number(config.EVA_PLANNING_WINDOW_DAYS || 7) * 24 * 60 * 60 * 1000);
     const upcoming = events.filter(ev => ev.scheduledStartAt && ev.scheduledStartAt >= now && ev.scheduledStartAt <= max);
     if (!upcoming || upcoming.size === 0) {
-      return interaction.reply({ content: '📅 Aucun événement prévu dans les 7 prochains jours.', flags: 64 });
+      return interaction.reply({ content: `📅 Aucun événement prévu dans les ${Number(config.EVA_PLANNING_WINDOW_DAYS || 7)} prochains jours.`, flags: 64 });
     }
 
-    let text = '📅 Événements à venir (7 jours) :\n';
+    let text = `📅 Événements à venir (${Number(config.EVA_PLANNING_WINDOW_DAYS || 7)} jours) :\n`;
     const sorted = upcoming.sort((a,b) => a.scheduledStartAt - b.scheduledStartAt);
     for (const [, ev] of sorted) {
       const when = new Date(ev.scheduledStartAt).toLocaleString();
@@ -808,7 +827,6 @@ function reprogrammerTaches() {
   if (countDefis > 0) console.log(`🔄 ${countDefis} défi(s) reprogrammé(s).`);
 
   // Sessions
-  const { lireSessions } = require('./utils/storage');
   const sessions = lireSessions();
   let countSessions = 0;
   for (const [messageId, session] of Object.entries(sessions)) {

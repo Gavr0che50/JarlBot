@@ -1,87 +1,118 @@
-const fs = require('fs');
 const path = require('path');
 
-const FICHIER_DEFIS = path.join(__dirname, '..', 'defis.json');
-const FICHIER_SESSIONS = path.join(__dirname, '..', 'sessions.json');
+let DatabaseSync = null;
+try {
+  ({ DatabaseSync } = require('node:sqlite'));
+} catch (err) {
+  throw new Error('node:sqlite est requis pour le stockage SQLite du bot.');
+}
 
-// ========================================
-// 🛠️ Fonctions génériques (lecture/écriture)
-// ========================================
+const DB_PATH = path.join(__dirname, '..', 'bot-state.db');
 
-function lireFichier(chemin) {
-  if (!fs.existsSync(chemin)) return {};
+let db = null;
+
+function openDb() {
+  if (db) return db;
+
+  db = new DatabaseSync(DB_PATH);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS defis (
+      message_id TEXT PRIMARY KEY,
+      data TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS sessions (
+      message_id TEXT PRIMARY KEY,
+      data TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+  `);
+  return db;
+}
+
+function readTable(table) {
+  const rows = openDb().prepare(`SELECT message_id, data FROM ${table}`).all();
+  const result = {};
+  for (const row of rows) {
+    if (!row?.message_id || !row.data) continue;
+    try {
+      result[row.message_id] = JSON.parse(row.data);
+    } catch (err) {
+      console.warn(`⚠️ Donnée SQLite illisible dans ${table} pour ${row.message_id}: ${err.message}`);
+    }
+  }
+  return result;
+}
+
+function upsert(table, messageId, payload) {
+  if (!messageId) return;
+
+  openDb().prepare(`
+    INSERT INTO ${table} (message_id, data, updated_at)
+    VALUES (?, ?, ?)
+    ON CONFLICT(message_id) DO UPDATE SET
+      data = excluded.data,
+      updated_at = excluded.updated_at
+  `).run(String(messageId), JSON.stringify(payload), Date.now());
+}
+
+function remove(table, messageId) {
+  if (!messageId) return;
+  openDb().prepare(`DELETE FROM ${table} WHERE message_id = ?`).run(String(messageId));
+}
+
+function getOne(table, messageId) {
+  if (!messageId) return null;
+
+  const row = openDb().prepare(`SELECT data FROM ${table} WHERE message_id = ?`).get(String(messageId));
+  if (!row?.data) return null;
+
   try {
-    const contenu = fs.readFileSync(chemin, 'utf8');
-    return JSON.parse(contenu);
+    return JSON.parse(row.data);
   } catch (err) {
-    console.error(`❌ Erreur lecture ${chemin} :`, err);
-    return {};
+    console.warn(`⚠️ Donnée SQLite illisible pour ${table}/${messageId}: ${err.message}`);
+    return null;
   }
 }
 
-function ecrireFichier(chemin, donnees) {
-  fs.writeFileSync(chemin, JSON.stringify(donnees, null, 2), 'utf8');
-}
-
-// ========================================
-// 🎯 Défis
-// ========================================
-
 function lireDefis() {
-  return lireFichier(FICHIER_DEFIS);
+  return readTable('defis');
 }
 
 function sauverDefi(messageId, defi) {
-  const defis = lireDefis();
-  defis[messageId] = defi;
-  ecrireFichier(FICHIER_DEFIS, defis);
+  upsert('defis', messageId, defi);
 }
 
 function getDefi(messageId) {
-  return lireDefis()[messageId] || null;
+  return getOne('defis', messageId);
 }
 
 function supprimerDefi(messageId) {
-  const defis = lireDefis();
-  delete defis[messageId];
-  ecrireFichier(FICHIER_DEFIS, defis);
+  remove('defis', messageId);
 }
 
-// ========================================
-// 🎮 Sessions spéciales
-// ========================================
-
 function lireSessions() {
-  return lireFichier(FICHIER_SESSIONS);
+  return readTable('sessions');
 }
 
 function sauverSession(messageId, session) {
-  const sessions = lireSessions();
-  sessions[messageId] = session;
-  ecrireFichier(FICHIER_SESSIONS, sessions);
+  upsert('sessions', messageId, session);
 }
 
 function getSession(messageId) {
-  return lireSessions()[messageId] || null;
+  return getOne('sessions', messageId);
 }
 
 function supprimerSession(messageId) {
-  const sessions = lireSessions();
-  delete sessions[messageId];
-  ecrireFichier(FICHIER_SESSIONS, sessions);
+  remove('sessions', messageId);
 }
 
-// ========================================
-// 📦 Exports
-// ========================================
-
 module.exports = {
-  // Défis
   lireDefis,
   sauverDefi,
   getDefi,
   supprimerDefi,
-  // Sessions
   lireSessions,
   sauverSession,
   getSession,

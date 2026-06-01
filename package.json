@@ -5,6 +5,10 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
+    "eva-refresh": "node scripts/eva-refresh.js",
+    "eva-refresh:daemon": "node scripts/eva-refresh.js --daemon",
+    "eva-public-refresh": "node scripts/eva-public-refresh.js",
+    "eva-public-status": "node scripts/eva-public-refresh.js --status",
     "deploy-commands": "node deploy-commands.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },

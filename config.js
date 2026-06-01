@@ -3,6 +3,9 @@
 // Modifie ces valeurs selon tes préférences
 // ========================================
 
+const MINUTE = 60 * 1000;
+const HOUR = 60 * MINUTE;
+
 module.exports = {
 
   // ========================================
@@ -49,17 +52,28 @@ module.exports = {
   // Astuce : 1000 = 1s | 60_000 = 1min | 3_600_000 = 1h
   // ========================================
 
+  // Valeurs de base ajustables à la main
+  EVA_DEFAULT_CAEN_REGION_ID: '2395741613538603007',
+  EVA_DEFAULT_LOCAL_LEAGUES_CIRCUIT_ID: '2395738311350114303',
+  EVA_RATE_LIMIT_MAX_DELAY_MS: 5000,
+  EVA_GRAPHQL_TIMEOUT_MS: 5000,
+  EVA_CACHE_BEST_SCORE_BONUS: 100000,
+  EVA_CAEN_PUBLIC_PLAYERS_PRELOAD_LIMIT: 30,
+  EVA_TEAM_LINEUP_DISPLAY_LIMIT: 8,
+  EVA_TOP_PLAYERS_LIMIT: 10,
+  EVA_PLANNING_WINDOW_DAYS: 7,
+
   // --- Défis ---
-  RAPPEL_MP_AVANT_MATCH:    48 * 60 * 60 * 1000, // 48h avant : MP aux intéressés
-  RAPPEL_24H_AVANT_MATCH:   24 * 60 * 60 * 1000, // 24h avant : message dans le salon
-  RAPPEL_1H_AVANT_MATCH:     1 * 60 * 60 * 1000, //  1h avant : message dans le salon
-  DUREE_UN_MATCH:           40 * 60 * 1000,      // 40 min par match
-  DELAI_SUPPRESSION_SALON:  48 * 60 * 60 * 1000, // 48h après : suppression salon + event
+  RAPPEL_MP_AVANT_MATCH:    48 * HOUR, // 48h avant : MP aux intéressés
+  RAPPEL_24H_AVANT_MATCH:   24 * HOUR, // 24h avant : message dans le salon
+  RAPPEL_1H_AVANT_MATCH:     1 * HOUR, //  1h avant : message dans le salon
+  DUREE_UN_MATCH:           40 * MINUTE,      // 40 min par match
+  DELAI_SUPPRESSION_SALON:  48 * HOUR, // 48h après : suppression salon + event
 
   // --- Sessions ---
-  DUREE_SESSION:             3 * 60 * 60 * 1000, // 3h de durée par défaut
-  RAPPEL_MP_SESSION_AVANT:  48 * 60 * 60 * 1000, // 48h avant : MP aux participants
-  DELAI_SUPPRESSION_SALON_SESSION: 48 * 60 * 60 * 1000, // 48h après la session
+  DUREE_SESSION:             3 * HOUR, // 3h de durée par défaut
+  RAPPEL_MP_SESSION_AVANT:  48 * HOUR, // 48h avant : MP aux participants
+  DELAI_SUPPRESSION_SALON_SESSION: 48 * HOUR, // 48h après la session
 
 
 
@@ -81,10 +95,12 @@ module.exports = {
   EVA_CAEN_MIN_MATCHES: Number(process.env.EVA_CAEN_MIN_MATCHES || 5),
   EVA_PLAYER_MIN_MATCHES: Number(process.env.EVA_PLAYER_MIN_MATCHES || 5),
   EVA_PUBLIC_PLAYER_BATCH_SIZE: Number(process.env.EVA_PUBLIC_PLAYER_BATCH_SIZE || 8),
+  EVA_PLAYER_RESOLUTION_INTERVAL_MS: Number(process.env.EVA_PLAYER_RESOLUTION_INTERVAL_MS || 1000),
+  EVA_PLAYER_RESOLUTION_JITTER_MS: Number(process.env.EVA_PLAYER_RESOLUTION_JITTER_MS || 1000),
   EVA_PLAYER_SUGGESTIONS: process.env.EVA_PLAYER_SUGGESTIONS || '',
-  EVA_DATA_REFRESH_MS: Number(process.env.EVA_DATA_REFRESH_MS || 12 * 60 * 60 * 1000),
-  EVA_PLAYERS_CACHE_MS: Number(process.env.EVA_PLAYERS_CACHE_MS || 30 * 60 * 1000),
-  EVA_REQUEST_CACHE_MS: Number(process.env.EVA_REQUEST_CACHE_MS || 10 * 60 * 1000),
+  EVA_DATA_REFRESH_MS: Number(process.env.EVA_DATA_REFRESH_MS || 12 * HOUR),
+  EVA_PLAYERS_CACHE_MS: Number(process.env.EVA_PLAYERS_CACHE_MS || 30 * MINUTE),
+  EVA_REQUEST_CACHE_MS: Number(process.env.EVA_REQUEST_CACHE_MS || 10 * MINUTE),
   EVA_API_MIN_INTERVAL_MS: Number(process.env.EVA_API_MIN_INTERVAL_MS || 117),
 
 

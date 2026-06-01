@@ -30,7 +30,7 @@ const commands = [
   // ----------------------------------------
   new SlashCommandBuilder()
     .setName('mix')
-    .setDescription('Lance un match mix sur le serveur')
+    .setDescription('Crée un match mix entre deux équipes')
     .addIntegerOption(option =>
       option.setName('nombre-matchs')
         .setDescription('Nombre de matchs à jouer (1 match ≈ 40 min)')
@@ -64,7 +64,7 @@ const commands = [
   // ----------------------------------------
   new SlashCommandBuilder()
     .setName('scrim')
-    .setDescription('Lance un scrim sur le serveur')
+    .setDescription('Crée un scrim entre deux équipes')
     .addIntegerOption(option =>
       option.setName('nombre-matchs')
         .setDescription('Nombre de matchs à jouer (1 match ≈ 40 min)')
@@ -98,7 +98,7 @@ const commands = [
   // ----------------------------------------
   new SlashCommandBuilder()
     .setName('free')
-    .setDescription('Lance un free ouvert à tous')
+    .setDescription('Crée un free ouvert à tous')
     .addIntegerOption(option =>
       option.setName('nombre-joueurs')
         .setDescription('Nombre de joueurs pour le free (2–10)')
@@ -132,7 +132,7 @@ const commands = [
   // ----------------------------------------
   new SlashCommandBuilder()
     .setName('renfort')
-    .setDescription('Invite un joueur dans un salon privé (1 seul)')
+    .setDescription('Invite un joueur dans un salon privé')
     .addUserOption(option =>
       option.setName('joueur')
         .setDescription('Joueur à inviter')
@@ -145,24 +145,24 @@ const commands = [
     ),
 
   // ----------------------------------------
-  // 📊 /stat — Afficher le KDA EVA d'un joueur
+  // 📊 /stat — Afficher les stats EVA d'un joueur compétitif public
   // ----------------------------------------
   new SlashCommandBuilder()
     .setName('stat')
-    .setDescription('Affiche le KDA EVA d’un joueur')
+    .setDescription('Affiche les stats EVA d’un joueur compétitif public')
     .addStringOption(option =>
       option.setName('joueur')
-        .setDescription('Nom du joueur EVA')
+        .setDescription('Nom du joueur compétitif EVA')
         .setRequired(true)
         .setAutocomplete(true)
     ),
 
   // ----------------------------------------
-  // 🗓️ /planning — Liste les événements à venir (7 jours)
+  // 🗓️ /planning — Liste les événements à venir
   // ----------------------------------------
   new SlashCommandBuilder()
     .setName('stat-equipe')
-    .setDescription('Affiche les stats d’une équipe')
+    .setDescription('Affiche les stats EVA d’une équipe')
     .addStringOption(option =>
       option.setName('equipe')
         .setDescription('Nom ou tag de l’équipe')
@@ -172,7 +172,7 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName('classement')
-    .setDescription('Affiche le classement local EVA par division')
+    .setDescription('Affiche le classement local EVA d’un site')
     .addStringOption(option =>
       option.setName('site')
         .setDescription('Site ou ville EVA')
@@ -182,11 +182,11 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName('top')
-    .setDescription('Affiche le top 10 des joueurs EVA publics sur la saison en cours'),
+    .setDescription('Affiche le top des joueurs compétitifs EVA du cache local'),
 
   new SlashCommandBuilder()
     .setName('planning')
-    .setDescription('Liste les matchs / événements à venir (7 jours)'),
+    .setDescription('Liste les événements Discord à venir'),
 
   // ----------------------------------------
   // 🎮 /session — Proposer une session spéciale

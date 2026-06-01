@@ -11,7 +11,7 @@ Création automatique de **salons privés**, **événements Discord**, **rappels
 ### ⚔️ Défis d'équipes
 - **`/mix`** — Match amical entre deux équipes
 - **`/scrim`** — Match d'entraînement compétitif
-- **`/free`** — Recherche libre de joueurs (sans équipe imposée)
+- **`/free`** — Recherche libre de joueurs avec niveau attendu imposé
 - Validation par votes ✅ de l'équipe adverse (seuil configurable)
 - Création automatique d'un **salon privé** réservé aux participants
 - Création automatique d'un **événement Discord** (visible dans la barre latérale)
@@ -22,18 +22,18 @@ Création automatique de **salons privés**, **événements Discord**, **rappels
 - Nettoyage automatique du salon 48h après le match
 
 ### 🎮 Sessions spéciales
-- **`/session`** — Propose une session (Nocturne, Matinale, Événement)
+- **`/session`** — Propose une session (Nocturne, Matinale, Événement) avec descriptif obligatoire
 - Inscription via boutons **Je participe / Quitter**
 - Lancement automatique quand le nombre de joueurs est atteint
 - Salon privé + rappel MP 48h avant
 
 ### 🛠️ Outils admin
 - **`/renfort`** — Inviter un renfort dans un salon privé, avec une équipe cible pour les scrims
-- **`/stat`** — Afficher le KDA EVA d'un joueur public avec 5+ matchs all-time
+- **`/stat`** — Afficher les stats EVA d'un joueur compétitif public depuis le cache local
 - **`/stat-equipe`** — Afficher les stats d'une équipe EVA depuis le cache local, avec son classement local quand disponible
-- **`/classement`** — Afficher le classement local EVA par division, via un site sélectionné
-- **`/top`** — Afficher le top 10 des joueurs EVA publics sur la saison en cours
-- **`/planning`** — Lister les matchs/événements Discord à venir sur 7 jours
+- **`/classement`** — Afficher le classement local EVA d'un site, par division, avec rafraîchissement hybride si la donnée est trop vieille
+- **`/top`** — Afficher le top des joueurs compétitifs EVA du cache local sur la saison en cours
+- **`/planning`** — Lister les événements Discord à venir
 - **`/ping`** — Vérifier que le bot répond
 
 ---
@@ -62,7 +62,9 @@ cd JarlBot
 npm install
 ```
 
-Le bot utilise la base SQLite integree a Node.js, donc il n'y a pas de package SQLite natif a compiler.
+Le bot utilise la base SQLite integree a Node.js, donc il n'y a pas de package SQLite natif a compiler.  
+Cette base garde aussi un petit index des joueurs competitifs deja vus pour accelerer les refreshs suivants.
+Le projet garde aussi un cache public EVA séparé pour les statistiques et les classements, que les commandes relisent d'abord avant de rafraîchir à la demande.
 
 ### 3. Configurer les variables d'environnement
 
@@ -75,12 +77,21 @@ GUILD_ID=id_de_ton_serveur
 CATEGORIE_DEFIS_ID=id_de_la_categorie_pour_les_salons
 EVA_COMPETITIVE_API_BASE_URL=https://competitive.eva.gg/api
 EVA_GRAPHQL_URL=https://api.eva.gg/graphql
+EVA_ACCESS_TOKEN=ton_token_de_session_eva_optionnel
+EVA_EMAIL=ton_email_eva_optionnel
+EVA_PASSWORD=ton_mot_de_passe_eva_optionnel
 EVA_LOCAL_LEAGUES_CIRCUIT_ID=2395738311350114303
 EVA_CAEN_REGION_ID=2395741613538603007
 EVA_CAEN_RANKING_IDS=2489142894001680383,2441507312469446655
 EVA_CAEN_MIN_MATCHES=5
 EVA_PLAYER_MIN_MATCHES=5
 EVA_PUBLIC_PLAYER_BATCH_SIZE=8
+EVA_PUBLIC_USER_PAGE_LIMIT=0
+EVA_PUBLIC_SEED_USER_IDS=
+EVA_PUBLIC_STAT_LIMIT=0
+EVA_PUBLIC_STAT_BATCH_SIZE=10
+EVA_PUBLIC_MIN_INTERVAL_MS=250
+EVA_PUBLIC_MAX_RETRIES=4
 EVA_DATA_REFRESH_MS=43200000
 EVA_PLAYERS_CACHE_MS=1800000
 EVA_REQUEST_CACHE_MS=600000
@@ -104,11 +115,35 @@ Tu devrais voir :
 npm start
 ```
 
+### Peupler la base sans lancer le bot
+```bash
+npm run eva-refresh:daemon
+```
+
+Ce worker remplit automatiquement `bot-state.db` et `eva-cache.db` sans démarrer Discord.  
+Si tu veux que le bot reste strictement en lecture seule côté EVA, ajoute `EVA_DISABLE_INLINE_REFRESH=1` dans `.env` et laisse le worker tourner à part.
+
+Le moteur EVA respecte maintenant les `429 Too Many Requests` en s'appuyant sur `Retry-After` quand EVA le renvoie, puis en mettant le cycle en pause au lieu de continuer à insister.
+
+### Worker public EVA
+```bash
+npm run eva-public-refresh
+```
+
+Ce worker alimente le cache public EVA. Il peut:
+- utiliser un `EVA_ACCESS_TOKEN` de session,
+- se faire seed avec des `userId` déjà connus,
+- réimporter les stats depuis le cache principal sans refaire d'appel réseau,
+- reprendre uniquement les profils manquants ou trop anciens.
+
 ---
 
 ## ⚙️ Configuration
 
 Toute la configuration éditable se trouve dans **`config.js`** :
+
+`config.js` est le fichier de réglage manuel principal. On y met les constantes métier et les durées du bot.  
+Le fichier `.env` reste pour les secrets, les IDs propres à un environnement, et les surcharges locales si besoin.
 
 | Paramètre | Description |
 |---|---|
@@ -118,6 +153,15 @@ Toute la configuration éditable se trouve dans **`config.js`** :
 | `RAPPEL_24H_AVANT_MATCH` | Rappel dans le salon (24h avant) |
 | `RAPPEL_1H_AVANT_MATCH` | Rappel dans le salon (1h avant) |
 | `DELAI_SUPPRESSION_SALON` | Délai avant suppression du salon (48h après) |
+| `EVA_DEFAULT_CAEN_REGION_ID` | Valeur de secours si l'ID de région Caen n'est pas fourni |
+| `EVA_DEFAULT_LOCAL_LEAGUES_CIRCUIT_ID` | Valeur de secours pour le circuit local leagues |
+| `EVA_RATE_LIMIT_MAX_DELAY_MS` | Plafond de ralentissement automatique après un 429 |
+| `EVA_GRAPHQL_TIMEOUT_MS` | Timeout des appels GraphQL EVA |
+| `EVA_CACHE_BEST_SCORE_BONUS` | Bonus de score appliqué à un cache marqué complet |
+| `EVA_CAEN_PUBLIC_PLAYERS_PRELOAD_LIMIT` | Nombre de joueurs Caen préchargés au démarrage |
+| `EVA_TEAM_LINEUP_DISPLAY_LIMIT` | Nombre max de joueurs affichés dans une lineup équipe |
+| `EVA_TOP_PLAYERS_LIMIT` | Nombre max de joueurs affichés par `/top` |
+| `EVA_PLANNING_WINDOW_DAYS` | Fenêtre temporelle affichée par `/planning` |
 | `EVA_COMPETITIVE_API_BASE_URL` | URL de base de l'API EVA Competitive |
 | `EVA_GRAPHQL_URL` | Endpoint GraphQL public utilisé par app.eva.gg |
 | `EVA_LOCAL_LEAGUES_CIRCUIT_ID` | Circuit Local Leagues EVA utilisé pour découvrir les tournois JARL |
@@ -128,6 +172,16 @@ Toute la configuration éditable se trouve dans **`config.js`** :
 | `EVA_PLAYER_SUGGESTIONS` | Fallback manuel de pseudos `Pseudo#123456`, séparés par des virgules |
 | `EVA_PLAYER_MIN_MATCHES` | Ancienne garde du cache joueurs, conservée pour compatibilité |
 | `EVA_PUBLIC_PLAYER_BATCH_SIZE` | Nombre de profils publics récupérés par requête GraphQL groupée |
+| `EVA_PUBLIC_USER_PAGE_LIMIT` | Limite optionnelle de pages pour le crawl public EVA |
+| `EVA_PUBLIC_SEED_USER_IDS` | Liste de `userId` EVA à injecter comme seeds |
+| `EVA_PUBLIC_STAT_LIMIT` | Limite de joueurs traités par le worker public |
+| `EVA_PUBLIC_STAT_BATCH_SIZE` | Taille des lots pour les stats publiques |
+| `EVA_PUBLIC_MIN_INTERVAL_MS` | Pause minimale entre deux appels EVA publics |
+| `EVA_PUBLIC_MAX_RETRIES` | Nombre de retries du worker public |
+| `EVA_ACCESS_TOKEN` | Token de session EVA optionnel pour GraphQL public |
+| `EVA_EMAIL` / `EVA_PASSWORD` | Alternative au token pour s'authentifier sur EVA |
+| `EVA_PLAYER_RESOLUTION_INTERVAL_MS` | Cadence de base entre deux résolutions de joueur |
+| `EVA_PLAYER_RESOLUTION_JITTER_MS` | Jitter ajouté à la cadence de résolution pour lisser le flux |
 | `EVA_DATA_REFRESH_MS` | Fréquence de mise à jour du snapshot local EVA (12h par défaut) |
 | `EVA_PLAYERS_CACHE_MS` | Durée des caches mémoire EVA intermédiaires |
 | `EVA_REQUEST_CACHE_MS` | Durée du cache des appels EVA unitaires |
@@ -146,8 +200,7 @@ JarlBot/
 ├── config.js               ← Configuration éditable
 ├── deploy-commands.js      ← Enregistrement des commandes slash
 ├── index.js                ← Code principal du bot
-├── defis.json              ← Données des défis (auto-généré)
-├── sessions.json           ← Données des sessions (auto-généré)
+├── bot-state.db             ← Données des défis et sessions (SQLite)
 ├── eva-cache.db            ← Base locale SQLite du cache EVA
 └── utils/
     └── eva.js              ← API EVA + lecture/écriture du cache local
@@ -198,7 +251,11 @@ ISC — Usage personnel et communautaire libre.
 
 ## 💡 Notes
 
-- Les fichiers `defis.json` et `sessions.json` sont créés automatiquement
+- Les données de défis et sessions sont stockées dans `bot-state.db`
 - Le cache EVA persistant est dans `eva-cache.db` ; si tu déplaces le bot sur un autre PC, copie aussi ce fichier pour garder l'historique local
+- Les commandes EVA utilisent un mode hybride: lecture locale d'abord, refresh si la donnée est absente ou plus vieille que 24h
+- Le worker `npm run eva-public-refresh` peut tourner à part du bot Discord
+- Le cache joueurs ne contient pas tous les comptes EVA, mais les joueurs compétitifs dont le profil public a pu être résolu
+- Les constantes que tu veux ajuster à la main doivent rester dans `config.js`, pas éparpillées dans le code
 - Les tâches programmées (rappels, nettoyage) sont **persistantes** : si le bot redémarre, elles sont reprogrammées au boot
 - `.env` ne doit **jamais** être commit sur Git

@@ -74,6 +74,10 @@ DISCORD_TOKEN=ton_token_secret_ici
 CLIENT_ID=id_de_ton_application
 GUILD_ID=id_de_ton_serveur_discord
 CATEGORIE_DEFIS_ID=id_de_la_categorie_pour_les_salons
+EVA_GRAPHQL_URL=https://api.eva.gg/graphql
+EVA_ACCESS_TOKEN=token_de_session_eva_optionnel
+EVA_PUBLIC_SEED_USER_IDS=
+EVA_PUBLIC_MIN_INTERVAL_MS=250
 ```
 
 ### Comment récupérer ces valeurs ?
@@ -96,6 +100,7 @@ CATEGORIE_DEFIS_ID=id_de_la_categorie_pour_les_salons
 | Le fichier s'appelle `.env.txt` | Active l'affichage des extensions dans l'explorateur Windows et renomme-le |
 | `TokenInvalid` au lancement | Token mal copié, espace en trop, ou token révoqué → régénère-le |
 | `CATEGORIE_DEFIS_ID` vide | Le bot ne pourra pas créer de salons privés → obligatoire |
+| `EVA_ACCESS_TOKEN` refusé | Le token EVA a expiré ou le compte n'a pas les droits nécessaires |
 
 ---
 
@@ -210,7 +215,7 @@ Le bot ne peut pas accéder à un salon ou une ressource.
 Le bot essaie d'accéder à un salon qui n'existe plus.
 
 **Solutions :**
-1. Supprime manuellement l'entrée obsolète dans `defis.json` ou `sessions.json`
+1. Supprime l'entrée obsolète dans `bot-state.db` via le bot ou recrée la base si nécessaire
 2. Redémarre le bot pour reprogrammer les tâches restantes
 
 ---
@@ -219,8 +224,17 @@ Le bot essaie d'accéder à un salon qui n'existe plus.
 Le bot cherche un message supprimé.
 
 **Solutions :**
-1. Supprime manuellement l'entrée obsolète dans `defis.json` ou `sessions.json`
-2. Pour repartir propre, vide `defis.json` et `sessions.json` → remplace leur contenu par `{}`
+1. Supprime l'entrée obsolète dans `bot-state.db` via le bot ou recrée la base si nécessaire
+2. Pour repartir propre, supprime `bot-state.db` puis relance le bot pour reconstruire la base
+
+### `EVA GraphQL error 429`
+Le worker EVA ou une commande live a trop sollicité l'API.
+
+**Solutions :**
+1. Attends la fin du backoff automatique
+2. Baisse `EVA_PUBLIC_MIN_INTERVAL_MS`
+3. Baisse `EVA_PUBLIC_STAT_BATCH_SIZE`
+4. Laisse le cache local servir les commandes si les données ont moins de 24h
 
 ---
 
@@ -257,7 +271,7 @@ Une erreur non gérée fait planter Node.js.
 - **Toujours redémarrer le terminal** après avoir installé Node.js
 - **Mode développeur Discord** : active-le pour copier les IDs facilement (**Paramètres** → **Avancé** → **Mode développeur**)
 - **Tester rapidement** : mets `SEUIL_VALIDATION: 1` dans `config.js` pour valider un défi avec un seul vote
-- **Vider les données de test** : vide `defis.json` et `sessions.json` avec `{}`
+- **Vider les données de test** : supprime `bot-state.db` ou enlève les entrées de test via le bot
 - **Le bot plante ?** Lis toujours la **première ligne** du message d'erreur, pas la dernière
 - **Token révoqué ?** Va sur le portail → Reset Token → mets à jour `.env`
 
