@@ -74,7 +74,10 @@ function planifier(nom, date, maintenant, callback) {
 /** Génère un nom de salon basé sur le défi */
 function genererNomSalon(defi, guild) {
   const date = defi.date.replace(/\//g, '-');
-  return `${config.PREFIXE_SALON_PRIVE}-${defi.type}-${date}`.toLowerCase();
+  const heure = String(defi.heure || '')
+    .replace(/:/g, '-')
+    .replace(/[^0-9-]/g, '');
+  return `${defi.type}-${date}-${heure}`.toLowerCase();
 }
 
 /** Génère un nom de salon basé sur la session */

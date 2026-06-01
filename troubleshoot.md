@@ -319,6 +319,18 @@ Une erreur non gérée fait planter Node.js.
 
 ---
 
+### Le nom du salon privé n'est pas celui attendu
+Les salons de match utilisent le format `type-date-heure`.
+
+Exemples:
+- `free-01-06-2026-18-00`
+- `mix-01-06-2026-20-30`
+- `scrim-01-06-2026-21-00`
+
+Si tu vois encore un ancien format, le salon a probablement été créé avant la mise à jour ou le bot n'a pas été redémarré.
+
+---
+
 ### Le launcher ne s'ouvre pas
 **Vérifications :**
 1. Installe Node.js 24+ depuis `https://nodejs.org`

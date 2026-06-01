@@ -215,7 +215,7 @@ Le fichier `.env` reste pour les secrets, les IDs propres à un environnement, e
 | Paramètre | Description |
 |---|---|
 | `SEUIL_VALIDATION` | Nombre de votes ✅ requis pour valider un défi (1 en test, 3+ en prod) |
-| `PREFIXE_SALON_PRIVE` | Préfixe des salons créés (ex: `match-mix-25-12-2025`) |
+| `PREFIXE_SALON_PRIVE` | Ancien préfixe historique. Les nouveaux salons de match utilisent `type-date-heure`, ex: `mix-01-06-2026-20-30` |
 | `RAPPEL_MP_AVANT_MATCH` | Délai du rappel MP (par défaut 48h) |
 | `RAPPEL_24H_AVANT_MATCH` | Rappel dans le salon (24h avant) |
 | `RAPPEL_1H_AVANT_MATCH` | Rappel dans le salon (1h avant) |
