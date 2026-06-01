@@ -319,6 +319,42 @@ const html = `<!doctype html>
       background: rgba(18, 20, 32, .82);
       box-shadow: 0 0 0 1px rgba(255,255,255,.02) inset, 0 0 32px rgba(184,77,255,.08);
     }
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 170px;
+    }
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: var(--muted);
+      box-shadow: 0 0 0 0 rgba(184,77,255,.0);
+      flex: 0 0 auto;
+    }
+    .status-pill.online .status-dot {
+      background: var(--ok);
+      box-shadow: 0 0 0 6px rgba(67,211,158,.12);
+    }
+    .status-pill.offline .status-dot {
+      background: var(--bad);
+      box-shadow: 0 0 0 6px rgba(255,95,125,.12);
+    }
+    .status-copy {
+      display: flex;
+      flex-direction: column;
+      line-height: 1.1;
+    }
+    .status-copy strong {
+      font-size: .95rem;
+      letter-spacing: -.02em;
+    }
+    .status-copy span {
+      color: var(--muted);
+      font-size: .82rem;
+      margin-top: 2px;
+    }
     main { padding: 10px min(6vw, 72px) 56px; }
     .grid { display: grid; grid-template-columns: minmax(320px, 1fr); gap: 18px; }
     .card {
@@ -468,7 +504,13 @@ const html = `<!doctype html>
     <div>
       <h1>JarlBot<br>Launcher</h1>
     </div>
-    <div class="pill" id="processState">Chargement...</div>
+    <div class="pill status-pill offline" id="processState">
+      <span class="status-dot" aria-hidden="true"></span>
+      <span class="status-copy">
+        <strong>Chargement...</strong>
+        <span>Etat du bot</span>
+      </span>
+    </div>
   </header>
   <main class="grid">
     <section class="card">
@@ -531,8 +573,11 @@ const html = `<!doctype html>
     }
     async function loadStatus() {
       const status = await api('/api/status');
-      document.getElementById('processState').innerHTML =
-        '<b>' + (status.botRunning ? 'Bot en ligne' : 'Bot arrete') + '</b><br><span style="color:var(--muted)">Invite et config locale</span>';
+      const pill = document.getElementById('processState');
+      pill.classList.toggle('online', !!status.botRunning);
+      pill.classList.toggle('offline', !status.botRunning);
+      pill.querySelector('strong').textContent = status.botRunning ? 'Bot en ligne' : 'Bot arrete';
+      pill.querySelector('span.status-copy span').textContent = status.botRunning ? 'Pret a recevoir des commandes' : 'Prend quelques secondes au demarrage';
       for (const key of ['CLIENT_ID', 'GUILD_ID', 'CATEGORIE_DEFIS_ID']) document.getElementById(key).value = status.env[key] || '';
       document.getElementById('DISCORD_TOKEN').placeholder = status.env.DISCORD_TOKEN ? 'Token deja configure (' + status.env.DISCORD_TOKEN + ')' : 'Colle le token Discord ici';
       inviteUrl = status.inviteUrl || '';
