@@ -410,7 +410,7 @@ const html = `<!doctype html>
     .chip b { font-size: .98rem; }
     .launch-band {
       display: flex;
-      align-items: center;
+      align-items: flex-end;
       gap: 10px;
       margin-top: 18px;
       padding: 14px;
@@ -420,8 +420,46 @@ const html = `<!doctype html>
     }
     .launch-band strong { display:block; }
     .launch-band span { color: var(--muted); font-size: .92rem; }
-    .invite-line { display: flex; gap: 10px; flex-wrap: wrap; }
-    .hidden { display: none !important; }
+    .invite-line {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-left: auto;
+      justify-content: flex-end;
+    }
+    .footer-panel {
+      margin-top: 18px;
+      padding: 18px;
+      border-radius: 22px;
+      background: rgba(255,255,255,.04);
+      border: 1px solid rgba(184,77,255,.14);
+    }
+    .footer-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+    .logs-bar {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    pre {
+      white-space: pre-wrap;
+      overflow: auto;
+      max-height: 340px;
+      background: #0b0d14;
+      color: #e8eaff;
+      padding: 16px;
+      border-radius: 18px;
+      font-size: .88rem;
+      border: 1px solid rgba(184,77,255,.12);
+      margin: 0;
+    }
     @media (max-width: 900px) { header { display: block; } }
   </style>
 </head>
@@ -429,7 +467,6 @@ const html = `<!doctype html>
   <header>
     <div>
       <h1>JarlBot<br>Launcher</h1>
-      <p class="subtitle">Interface locale d'administration pour configurer Discord, lancer le bot et générer l'invitation avec un rendu plus premium, sombre et lisible.</p>
     </div>
     <div class="pill" id="processState">Chargement...</div>
   </header>
@@ -458,6 +495,25 @@ const html = `<!doctype html>
         </div>
       </div>
     </section>
+    <section class="footer-panel">
+      <div class="footer-head">
+        <div>
+          <h2>Logs disponibles</h2>
+          <p class="section-note" style="margin:0">Les derniers journaux utiles du bot et du launcher.</p>
+        </div>
+        <div class="logs-bar">
+          <select id="logKind" onchange="loadLogs()">
+            <option value="bot">Bot</option>
+            <option value="error">Erreurs bot</option>
+            <option value="refresh">Refresh EVA</option>
+            <option value="launcher">Launcher</option>
+          </select>
+          <button class="secondary" onclick="loadLogs()">Rafraichir logs</button>
+        </div>
+      </div>
+      <div class="hint" id="lastAction">Pret.</div>
+      <pre id="logs"></pre>
+    </section>
   </main>
   <script>
     let inviteUrl = '';
@@ -469,6 +525,7 @@ const html = `<!doctype html>
     }
     function setLast(text, type = '') {
       const el = document.getElementById('lastAction');
+      if (!el) return;
       el.className = 'hint ' + type;
       el.textContent = text;
     }
@@ -481,6 +538,11 @@ const html = `<!doctype html>
       inviteUrl = status.inviteUrl || '';
       document.getElementById('inviteLink').href = inviteUrl || '#';
     }
+    async function loadLogs() {
+      const kind = document.getElementById('logKind').value;
+      const data = await api('/api/logs?kind=' + encodeURIComponent(kind));
+      document.getElementById('logs').textContent = data.logs || '(aucun log)';
+    }
     async function saveConfig() {
       const payload = {};
       for (const key of ['DISCORD_TOKEN','CLIENT_ID','GUILD_ID','CATEGORIE_DEFIS_ID']) {
@@ -492,10 +554,16 @@ const html = `<!doctype html>
       await loadStatus();
     }
     async function saveAndStart() {
-      await saveConfig();
+      const payload = {};
+      for (const key of ['DISCORD_TOKEN','CLIENT_ID','GUILD_ID','CATEGORIE_DEFIS_ID']) {
+        const value = document.getElementById(key).value.trim();
+        if (value) payload[key] = value;
+      }
+      await api('/api/config', { method: 'POST', body: JSON.stringify(payload) });
       const r = await api('/api/bot/start', { method: 'POST' });
       setLast(r.message || 'Bot lance + slash commands enregistrees.', 'ok');
       await loadStatus();
+      await loadLogs().catch(() => {});
     }
     async function copyInvite() {
       if (!inviteUrl) return setLast('Renseigne le Client ID avant de copier le lien.', 'warn');
@@ -503,7 +571,9 @@ const html = `<!doctype html>
       setLast('Lien invitation copie.', 'ok');
     }
     loadStatus().catch(err => setLast(err.message, 'bad'));
+    loadLogs().catch(() => {});
     setInterval(loadStatus, 5000);
+    setInterval(loadLogs, 7000);
   </script>
 </body>
 </html>`;
