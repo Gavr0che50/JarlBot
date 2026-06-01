@@ -159,7 +159,22 @@ function tail(file, maxLines = 160) {
 }
 
 function startBot() {
-  if (botProcess && !botProcess.killed) return { started: false, message: 'Bot deja lance par le launcher.' };
+  if (botProcess && !botProcess.killed) {
+    if (!deployProcess || deployProcess.killed) {
+      const deployOut = fs.openSync(LAUNCHER_LOG, 'a');
+      deployProcess = spawn(process.execPath, ['deploy-commands.js'], {
+        cwd: ROOT,
+        stdio: ['ignore', deployOut, deployOut],
+        env: { ...process.env, ...readEnv() },
+      });
+      deployProcess.on('exit', code => {
+        log(`Deploy slash commands termine avec code ${code}.`);
+        deployProcess = null;
+      });
+      log(`Deploy slash commands lance (pid ${deployProcess.pid}).`);
+    }
+    return { started: false, message: 'Bot deja lance; slash commands enregistrees.' };
+  }
   const out = fs.openSync(BOT_OUT_LOG, 'a');
   const err = fs.openSync(BOT_ERR_LOG, 'a');
   botProcess = spawn(process.execPath, ['index.js'], {
@@ -173,6 +188,19 @@ function startBot() {
     botProcess = null;
   });
   log(`Bot lance (pid ${botProcess.pid}).`);
+  if (!deployProcess || deployProcess.killed) {
+    const deployOut = fs.openSync(LAUNCHER_LOG, 'a');
+    deployProcess = spawn(process.execPath, ['deploy-commands.js'], {
+      cwd: ROOT,
+      stdio: ['ignore', deployOut, deployOut],
+      env: { ...process.env, ...readEnv() },
+    });
+    deployProcess.on('exit', code => {
+      log(`Deploy slash commands termine avec code ${code}.`);
+      deployProcess = null;
+    });
+    log(`Deploy slash commands lance (pid ${deployProcess.pid}).`);
+  }
   return { started: true, pid: botProcess.pid };
 }
 
@@ -237,67 +265,112 @@ const html = `<!doctype html>
   <title>JarlBot Launcher</title>
   <style>
     :root {
-      --bg: #f4efe5;
-      --ink: #1f2523;
-      --muted: #68736f;
-      --panel: rgba(255,255,255,.76);
-      --line: rgba(31,37,35,.14);
-      --brand: #d96f32;
-      --brand-dark: #9f411c;
-      --ok: #267d52;
-      --warn: #a45f13;
-      --bad: #b93737;
-      --shadow: 0 22px 70px rgba(31,37,35,.15);
+      --bg: #0c0d12;
+      --bg-2: #121420;
+      --panel: rgba(19, 20, 30, .86);
+      --panel-strong: rgba(25, 26, 38, .96);
+      --ink: #f2f4ff;
+      --muted: #9aa0b9;
+      --line: rgba(181, 111, 255, .16);
+      --brand: #b84dff;
+      --brand-2: #7a31ff;
+      --glow: rgba(184, 77, 255, .45);
+      --ok: #43d39e;
+      --warn: #ffb020;
+      --bad: #ff5f7d;
+      --shadow: 0 24px 90px rgba(0, 0, 0, .45);
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      font-family: ui-rounded, "Segoe UI", "Trebuchet MS", sans-serif;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       color: var(--ink);
       background:
-        radial-gradient(circle at top left, rgba(217,111,50,.25), transparent 34rem),
-        linear-gradient(135deg, #f7efe0 0%, #e6f0ea 54%, #f8f6ef 100%);
+        radial-gradient(circle at top left, rgba(184,77,255,.24), transparent 26rem),
+        radial-gradient(circle at top right, rgba(122,49,255,.14), transparent 22rem),
+        linear-gradient(135deg, #090a0f 0%, #0f1220 45%, #11131b 100%);
       min-height: 100vh;
+      letter-spacing: .01em;
     }
     header {
-      padding: 44px min(6vw, 72px) 20px;
+      padding: 40px min(6vw, 72px) 18px;
       display: flex;
       justify-content: space-between;
       gap: 24px;
       align-items: flex-end;
     }
-    h1 { font-size: clamp(2.2rem, 5vw, 4.6rem); line-height: .9; margin: 0; letter-spacing: -.06em; }
-    .subtitle { color: var(--muted); max-width: 680px; font-size: 1.05rem; }
-    .pill { border: 1px solid var(--line); border-radius: 999px; padding: 10px 14px; background: var(--panel); }
-    main { padding: 16px min(6vw, 72px) 56px; }
-    .grid { display: grid; grid-template-columns: minmax(320px, 1fr) minmax(320px, .9fr); gap: 18px; }
+    h1 {
+      font-size: clamp(2.6rem, 5.2vw, 5rem);
+      line-height: .88;
+      margin: 0;
+      letter-spacing: -.08em;
+      text-shadow: 0 0 28px rgba(184,77,255,.24);
+    }
+    .subtitle {
+      color: var(--muted);
+      max-width: 760px;
+      font-size: 1.02rem;
+      margin-top: 14px;
+    }
+    .pill {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 10px 14px;
+      background: rgba(18, 20, 32, .82);
+      box-shadow: 0 0 0 1px rgba(255,255,255,.02) inset, 0 0 32px rgba(184,77,255,.08);
+    }
+    main { padding: 10px min(6vw, 72px) 56px; }
+    .grid { display: grid; grid-template-columns: minmax(320px, 1fr); gap: 18px; }
     .card {
       background: var(--panel);
       border: 1px solid var(--line);
-      border-radius: 28px;
+      border-radius: 30px;
       box-shadow: var(--shadow);
-      padding: 24px;
-      backdrop-filter: blur(18px);
+      padding: 26px;
+      backdrop-filter: blur(20px);
+      position: relative;
+      overflow: hidden;
     }
-    .wide { grid-column: 1 / -1; }
-    h2 { margin: 0 0 14px; font-size: 1.3rem; }
+    .card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(184,77,255,.12), transparent 32%, rgba(122,49,255,.08));
+      pointer-events: none;
+    }
+    .card > * { position: relative; z-index: 1; }
+    h2 {
+      margin: 0 0 10px;
+      font-size: 1.2rem;
+      letter-spacing: -.03em;
+    }
+    .section-note {
+      margin: 0 0 18px;
+      color: var(--muted);
+      font-size: .95rem;
+    }
     label { display: block; font-weight: 700; margin: 12px 0 6px; }
     input, textarea, select {
       width: 100%;
-      border: 1px solid var(--line);
-      background: rgba(255,255,255,.82);
+      border: 1px solid rgba(184,77,255,.16);
+      background: rgba(10, 11, 16, .72);
       border-radius: 14px;
       padding: 12px 13px;
       font: inherit;
       color: var(--ink);
     }
-    input:focus, textarea:focus, select:focus { outline: 2px solid rgba(217,111,50,.35); border-color: var(--brand); }
+    input::placeholder { color: #7880a1; }
+    input:focus, textarea:focus, select:focus {
+      outline: 2px solid rgba(184,77,255,.28);
+      border-color: rgba(184,77,255,.75);
+      box-shadow: 0 0 0 4px rgba(184,77,255,.08);
+    }
     button, .button {
       border: 0;
       border-radius: 16px;
       padding: 12px 15px;
-      background: var(--ink);
-      color: white;
+      background: rgba(255,255,255,.08);
+      color: var(--ink);
       font-weight: 800;
       cursor: pointer;
       text-decoration: none;
@@ -305,41 +378,65 @@ const html = `<!doctype html>
       align-items: center;
       gap: 8px;
       justify-content: center;
+      transition: transform .15s ease, box-shadow .15s ease, background .15s ease, border-color .15s ease;
+      border: 1px solid rgba(255,255,255,.08);
     }
-    button.secondary { background: rgba(31,37,35,.09); color: var(--ink); }
-    button.brand { background: var(--brand); }
-    button.danger { background: var(--bad); }
+    button:hover, .button:hover { transform: translateY(-1px); box-shadow: 0 12px 30px rgba(0,0,0,.24); }
+    button.secondary, .button.secondary { background: rgba(255,255,255,.06); }
+    button.brand, .button.brand {
+      background: linear-gradient(135deg, var(--brand), var(--brand-2));
+      box-shadow: 0 10px 30px rgba(184,77,255,.24);
+    }
+    button.danger { background: linear-gradient(135deg, #ff5f7d, #cf3f76); }
     .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
-    .status { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-    .stat { border: 1px solid var(--line); border-radius: 18px; padding: 14px; background: rgba(255,255,255,.55); }
-    .stat b { display: block; font-size: 1.6rem; }
     .ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); }
-    pre {
-      white-space: pre-wrap;
-      overflow: auto;
-      max-height: 390px;
-      background: #18201d;
-      color: #e7f2ed;
-      padding: 16px;
-      border-radius: 18px;
-      font-size: .88rem;
-    }
     .hint { color: var(--muted); font-size: .92rem; }
-    @media (max-width: 900px) { header { display: block; } .grid { grid-template-columns: 1fr; } .status { grid-template-columns: 1fr; } }
+    .statusline {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 14px;
+    }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border-radius: 999px;
+      padding: 10px 14px;
+      background: rgba(255,255,255,.05);
+      border: 1px solid rgba(184,77,255,.16);
+      color: var(--ink);
+    }
+    .chip b { font-size: .98rem; }
+    .launch-band {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 18px;
+      padding: 14px;
+      border-radius: 20px;
+      background: linear-gradient(135deg, rgba(184,77,255,.14), rgba(122,49,255,.08));
+      border: 1px solid rgba(184,77,255,.18);
+    }
+    .launch-band strong { display:block; }
+    .launch-band span { color: var(--muted); font-size: .92rem; }
+    .invite-line { display: flex; gap: 10px; flex-wrap: wrap; }
+    .hidden { display: none !important; }
+    @media (max-width: 900px) { header { display: block; } }
   </style>
 </head>
 <body>
   <header>
     <div>
       <h1>JarlBot<br>Launcher</h1>
-      <p class="subtitle">Console locale pour configurer Discord, inviter le bot, lancer les refreshs EVA et surveiller les logs sans ouvrir le capot moteur.</p>
+      <p class="subtitle">Interface locale d'administration pour configurer Discord, lancer le bot et générer l'invitation avec un rendu plus premium, sombre et lisible.</p>
     </div>
     <div class="pill" id="processState">Chargement...</div>
   </header>
   <main class="grid">
     <section class="card">
-      <h2>1. Configuration Discord</h2>
-      <p class="hint">Ces valeurs sont sauvegardees dans <code>.env</code>. Le token n'est jamais affiche une fois enregistre.</p>
+      <h2>Configuration Discord</h2>
+      <p class="section-note">Les valeurs ci-dessous sont enregistrées dans <code>.env</code>. Le token ne s'affiche jamais une fois sauvé.</p>
       <label>Discord Bot Token</label>
       <input id="DISCORD_TOKEN" type="password" placeholder="Colle le token Discord ici" autocomplete="off" />
       <label>Client ID / Application ID</label>
@@ -348,46 +445,18 @@ const html = `<!doctype html>
       <input id="GUILD_ID" placeholder="Ex: 123456789012345678" />
       <label>Categorie des salons matchs</label>
       <input id="CATEGORIE_DEFIS_ID" placeholder="ID de la categorie Discord" />
-      <label>Token EVA optionnel</label>
-      <input id="EVA_ACCESS_TOKEN" type="password" placeholder="Optionnel, pour GraphQL public" autocomplete="off" />
-      <div class="actions">
-        <button class="brand" onclick="saveConfig()">Sauvegarder</button>
-        <button class="secondary" onclick="copyInvite()">Copier lien invitation</button>
-        <a class="button" id="inviteLink" href="#" target="_blank">Ouvrir invitation</a>
+      <div class="launch-band">
+        <div>
+          <strong>Lancer le bot</strong>
+          <span>Le lancement enregistre aussi les slash commands.</span>
+        </div>
+        <div class="invite-line" style="margin-left:auto">
+          <button class="brand" onclick="saveAndStart()">Sauvegarder et lancer</button>
+          <button class="secondary" onclick="saveConfig()">Sauvegarder</button>
+          <button class="secondary" onclick="copyInvite()">Copier invitation</button>
+          <a class="button secondary" id="inviteLink" href="#" target="_blank">Ouvrir invitation</a>
+        </div>
       </div>
-    </section>
-
-    <section class="card">
-      <h2>2. Pilotage</h2>
-      <div class="status" id="dbStats"></div>
-      <div class="actions">
-        <button class="brand" onclick="startBot()">Lancer le bot</button>
-        <button class="danger" onclick="stopBot()">Arreter le bot</button>
-        <button class="secondary" onclick="deploy()">Enregistrer slash commands</button>
-      </div>
-      <div class="actions">
-        <button onclick="refresh('normal')">Refresh EVA</button>
-        <button onclick="refresh('full')">Refresh complet</button>
-        <button class="danger" onclick="refresh('reset')">Reset + repeuplement</button>
-      </div>
-      <div class="actions">
-        <button class="secondary" onclick="exportPortable()">Exporter version portable</button>
-      </div>
-      <p class="hint" id="lastAction">Pret.</p>
-    </section>
-
-    <section class="card wide">
-      <h2>Logs</h2>
-      <div class="actions">
-        <select id="logKind" onchange="loadLogs()">
-          <option value="bot">Bot</option>
-          <option value="error">Erreurs bot</option>
-          <option value="refresh">Refresh EVA</option>
-          <option value="launcher">Launcher</option>
-        </select>
-        <button class="secondary" onclick="loadLogs()">Rafraichir logs</button>
-      </div>
-      <pre id="logs"></pre>
     </section>
   </main>
   <script>
@@ -405,21 +474,16 @@ const html = `<!doctype html>
     }
     async function loadStatus() {
       const status = await api('/api/status');
-      document.getElementById('processState').textContent =
-        'Bot: ' + (status.botRunning ? 'lance' : 'arrete') + ' | Refresh: ' + (status.refreshRunning ? 'en cours' : 'idle');
+      document.getElementById('processState').innerHTML =
+        '<b>' + (status.botRunning ? 'Bot en ligne' : 'Bot arrete') + '</b><br><span style="color:var(--muted)">Invite et config locale</span>';
       for (const key of ['CLIENT_ID', 'GUILD_ID', 'CATEGORIE_DEFIS_ID']) document.getElementById(key).value = status.env[key] || '';
       document.getElementById('DISCORD_TOKEN').placeholder = status.env.DISCORD_TOKEN ? 'Token deja configure (' + status.env.DISCORD_TOKEN + ')' : 'Colle le token Discord ici';
-      document.getElementById('EVA_ACCESS_TOKEN').placeholder = status.env.EVA_ACCESS_TOKEN ? 'Token EVA configure (' + status.env.EVA_ACCESS_TOKEN + ')' : 'Optionnel, pour GraphQL public';
       inviteUrl = status.inviteUrl || '';
       document.getElementById('inviteLink').href = inviteUrl || '#';
-      const db = status.db || {};
-      document.getElementById('dbStats').innerHTML = ['teams','players','rankings','rankingItems','majorTeams','locations'].map(k =>
-        '<div class="stat"><span>' + k + '</span><b>' + (db[k] ?? '-') + '</b></div>'
-      ).join('');
     }
     async function saveConfig() {
       const payload = {};
-      for (const key of ['DISCORD_TOKEN','CLIENT_ID','GUILD_ID','CATEGORIE_DEFIS_ID','EVA_ACCESS_TOKEN']) {
+      for (const key of ['DISCORD_TOKEN','CLIENT_ID','GUILD_ID','CATEGORIE_DEFIS_ID']) {
         const value = document.getElementById(key).value.trim();
         if (value) payload[key] = value;
       }
@@ -427,25 +491,19 @@ const html = `<!doctype html>
       setLast('Configuration sauvegardee.', 'ok');
       await loadStatus();
     }
+    async function saveAndStart() {
+      await saveConfig();
+      const r = await api('/api/bot/start', { method: 'POST' });
+      setLast(r.message || 'Bot lance + slash commands enregistrees.', 'ok');
+      await loadStatus();
+    }
     async function copyInvite() {
       if (!inviteUrl) return setLast('Renseigne le Client ID avant de copier le lien.', 'warn');
       await navigator.clipboard.writeText(inviteUrl);
       setLast('Lien invitation copie.', 'ok');
     }
-    async function startBot() { const r = await api('/api/bot/start', { method: 'POST' }); setLast(r.message || 'Bot lance.', 'ok'); await loadStatus(); }
-    async function stopBot() { const r = await api('/api/bot/stop', { method: 'POST' }); setLast(r.message || 'Arret demande.', 'warn'); await loadStatus(); }
-    async function deploy() { const r = await api('/api/deploy', { method: 'POST' }); setLast(r.message || 'Deploy lance.', 'ok'); }
-    async function refresh(mode) { const r = await api('/api/refresh', { method: 'POST', body: JSON.stringify({ mode }) }); setLast(r.message || 'Refresh lance.', 'ok'); await loadStatus(); }
-    async function exportPortable() { const r = await api('/api/export', { method: 'POST' }); setLast('Export termine: ' + r.output, r.code === 0 ? 'ok' : 'bad'); }
-    async function loadLogs() {
-      const kind = document.getElementById('logKind').value;
-      const data = await api('/api/logs?kind=' + encodeURIComponent(kind));
-      document.getElementById('logs').textContent = data.logs || '(aucun log)';
-    }
     loadStatus().catch(err => setLast(err.message, 'bad'));
-    loadLogs();
     setInterval(loadStatus, 5000);
-    setInterval(loadLogs, 7000);
   </script>
 </body>
 </html>`;

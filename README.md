@@ -61,14 +61,12 @@ Sur Windows, double-clique sur **`JarlBot Launcher.cmd`**.
 
 Le launcher:
 - installe les dependances si `node_modules` est absent;
-- ouvre une interface locale dans le navigateur;
+- ouvre une interface locale sombre, pensée pour une prise en main rapide;
 - sauvegarde les IDs Discord dans `.env`;
 - genere le lien d'invitation du bot;
-- enregistre les commandes slash;
-- lance/arrete le bot;
-- lance les refreshs EVA;
-- affiche les logs importants;
-- exporte une version portable avec `eva-cache.db`.
+- lance le bot et enregistre les commandes slash en une seule action;
+- reste volontairement minimal: pas de refresh EVA, pas de logs, pas d'export dans l'interface;
+- garde une UX simple pour un administrateur non technique.
 
 Tu peux aussi le lancer en terminal:
 
