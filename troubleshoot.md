@@ -54,6 +54,19 @@ npm install
 
 Tu dois voir des packages s'installer. À la fin, le dossier `node_modules` apparaît.
 
+### Option launcher pour non-expert
+
+Sous Windows, double-clique sur `JarlBot Launcher.cmd`.
+Le fichier vérifie Node.js, installe les dépendances si besoin, puis ouvre l'interface locale.
+
+Depuis cette interface, tu peux:
+- renseigner le token Discord, `CLIENT_ID`, `GUILD_ID` et `CATEGORIE_DEFIS_ID`;
+- copier le lien d'invitation du bot;
+- enregistrer les commandes slash;
+- lancer ou arrêter le bot;
+- lancer un refresh EVA;
+- lire les logs.
+
 ### ❌ Erreurs courantes à cette étape
 
 | Erreur | Solution |
@@ -302,6 +315,25 @@ Une erreur non gérée fait planter Node.js.
 2. Tu utilises les commandes sur le **bon serveur** (celui dans `GUILD_ID`) ?
 3. Les intents sont bien activés sur le portail développeur ?
 4. Redémarre Discord avec **Ctrl+R**
+
+---
+
+### Le launcher ne s'ouvre pas
+**Vérifications :**
+1. Installe Node.js 24+ depuis `https://nodejs.org`
+2. Lance `npm install` si le dossier `node_modules` est absent
+3. Lance `npm run launcher` pour voir l'erreur dans le terminal
+4. Si le port est deja pris, change `JARLBOT_LAUNCHER_PORT=3051` dans `.env`
+
+---
+
+### L'export portable ne contient pas mon token
+C'est volontaire. L'export ne copie pas `.env` pour eviter une fuite du token Discord.
+
+**Solution :**
+1. Ouvre le dossier exporte
+2. Double-clique `JarlBot Launcher.cmd`
+3. Renseigne les IDs et tokens depuis l'interface
 
 ---
 

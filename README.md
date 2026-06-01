@@ -52,6 +52,27 @@ Création automatique de **salons privés**, **événements Discord**, **rappels
 
 ## 🚀 Installation
 
+### Option simple avec interface graphique
+
+Sur Windows, double-clique sur **`JarlBot Launcher.cmd`**.
+
+Le launcher:
+- installe les dependances si `node_modules` est absent;
+- ouvre une interface locale dans le navigateur;
+- sauvegarde les IDs Discord dans `.env`;
+- genere le lien d'invitation du bot;
+- enregistre les commandes slash;
+- lance/arrete le bot;
+- lance les refreshs EVA;
+- affiche les logs importants;
+- exporte une version portable avec `eva-cache.db`.
+
+Tu peux aussi le lancer en terminal:
+
+```bash
+npm run launcher
+```
+
 ### 1. Cloner / récupérer le projet
 ```bash
 git clone <ton-repo>
@@ -144,6 +165,23 @@ npm run eva-refresh:reset
 
 Cette commande vide les tables EVA v2 et l'ancien cache joueurs/equipes, puis reconstruit les rankings, equipes, rosters et joueurs major league.
 
+### Exporter une version portable
+
+```bash
+npm run export-portable
+```
+
+L'export cree un dossier `dist/JarlBot-portable-...` avec:
+- le code du bot;
+- le launcher graphique;
+- `package.json` et `package-lock.json`;
+- la licence MIT;
+- `eva-cache.db` si elle existe;
+- `bot-state.db` si elle existe;
+- un `README-PORTABLE.txt`.
+
+L'export ne copie pas ton `.env` pour eviter de fuiter le token Discord. L'utilisateur final le remplit depuis le launcher.
+
 Le moteur EVA v2 respecte les contraintes observees de l'API Competitive: ranges de 50 elements maximum, derniere page bornee au total exact, cadence configurable et timeout par appel.
 
 ### Worker public EVA
@@ -214,6 +252,8 @@ Le fichier `.env` reste pour les secrets, les IDs propres à un environnement, e
 | `EVA_PLAYERS_CACHE_MS` | Durée des caches mémoire EVA intermédiaires |
 | `EVA_REQUEST_CACHE_MS` | Durée du cache des appels EVA unitaires |
 | `EVA_API_MIN_INTERVAL_MS` | Délai minimum entre deux appels EVA pour éviter les 429 |
+| `JARLBOT_LAUNCHER_PORT` | Port HTTP local de l'interface graphique, `3050` par défaut |
+| `JARLBOT_LAUNCHER_NO_OPEN` | Mettre `1` pour ne pas ouvrir automatiquement le navigateur |
 | `EVA_MAJOR_TOURNAMENT_IDS` | IDs des tournois major league utilisés par `/top` et `/top-equipe` |
 | `EVA_V2_CACHE_TTL_MS` | Durée de fraîcheur du cache EVA v2, 24h par défaut |
 | `EVA_V2_MIN_INTERVAL_MS` | Pause minimale entre deux appels EVA v2 |
@@ -234,12 +274,17 @@ JarlBot/
 ├── .env                    ← Secrets (ignoré par Git)
 ├── .gitignore
 ├── package.json
+├── JarlBot Launcher.cmd    ← Double-clic Windows pour ouvrir l'interface locale
+├── launcher.sh             ← Lanceur Linux/macOS
+├── LICENSE                 ← Licence MIT open source
 ├── config.js               ← Configuration éditable
 ├── deploy-commands.js      ← Enregistrement des commandes slash
 ├── index.js                ← Code principal du bot
 ├── bot-state.db             ← Données des défis et sessions (SQLite)
 ├── eva-cache.db            ← Base locale SQLite du cache EVA
 ├── scripts/
+│   ├── launcher.js         ← Interface graphique locale d'administration
+│   ├── export-portable.js  ← Génère un dossier portable avec la DB
 │   └── eva-refresh.js      ← Worker EVA v2 24h / reset / full refresh
 └── utils/
     ├── eva-v2.js           ← Moteur EVA v2 rapide et différentiel
@@ -285,7 +330,7 @@ Pour tester sans attendre les votes :
 
 ## 📜 Licence
 
-ISC — Usage personnel et communautaire libre.
+MIT — logiciel open source, libre d'utilisation, modification et redistribution. Voir [LICENSE](LICENSE).
 
 ---
 

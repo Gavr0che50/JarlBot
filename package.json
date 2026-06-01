@@ -1,7 +1,7 @@
 {
   "name": "jarlbot",
   "version": "1.0.0",
-  "description": "",
+  "description": "Discord bot and portable launcher for EVA community administration.",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
@@ -11,12 +11,14 @@
     "eva-refresh:daemon": "node scripts/eva-refresh.js --daemon",
     "eva-public-refresh": "node scripts/eva-public-refresh.js",
     "eva-public-status": "node scripts/eva-public-refresh.js --status",
+    "launcher": "node scripts/launcher.js",
+    "export-portable": "node scripts/export-portable.js",
     "deploy-commands": "node deploy-commands.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "type": "commonjs",
   "engines": {
     "node": ">=24.0.0"

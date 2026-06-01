@@ -6,3 +6,4 @@ bot-state.db*
 logs/
 .plan
 VULGARISATION.md
+dist/
