@@ -311,10 +311,11 @@ Une erreur non gérée fait planter Node.js.
 
 ### Le bot se connecte mais ne répond pas aux commandes
 **Vérifications :**
-1. Tu as bien lancé `node deploy-commands.js` ?
+1. Tu as bien lancé `node deploy-commands.js` ou `npm run deploy-commands` ?
 2. Tu utilises les commandes sur le **bon serveur** (celui dans `GUILD_ID`) ?
 3. Les intents sont bien activés sur le portail développeur ?
-4. Redémarre Discord avec **Ctrl+R**
+4. Essaie `/help` pour vérifier que le bot voit bien les slash commands
+5. Redémarre Discord avec **Ctrl+R**
 
 ---
 

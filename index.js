@@ -139,6 +139,7 @@ client.on('interactionCreate', async (interaction) => {
     // --- Commandes slash ---
     if (interaction.isChatInputCommand()) {
       switch (interaction.commandName) {
+        case 'help':    return gererCommandeHelp(interaction);
         case 'ping':    return interaction.reply('Pong ! 🏓');
         case 'mix':     return gererCommandeMatch(interaction);
         case 'scrim':   return gererCommandeMatch(interaction);
@@ -175,6 +176,43 @@ client.on('interactionCreate', async (interaction) => {
 // ========================================
 // ⚔️ COMMANDES /mix, /scrim, /free
 // ========================================
+
+async function gererCommandeHelp(interaction) {
+  const lines = [
+    '**Guide rapide JarlBot**',
+    'JarlBot organise les matchs EVA, les sessions, les renforts et affiche les classements/stats EVA.',
+    '',
+    '**Matchs et salons privés**',
+    '`/mix` : crée un match amical entre ton équipe et une autre équipe.',
+    'À remplir : nombre de matchs, date, heure, ton rôle équipe, adversaire.',
+    '`/scrim` : crée un match d’entraînement compétitif, avec le même fonctionnement que `/mix`.',
+    '`/free` : ouvre une session libre à plusieurs joueurs, avec un niveau attendu.',
+    '`/renfort` : invite un joueur dans un salon privé existant pour aider une équipe.',
+    '',
+    '**Sessions communautaires**',
+    '`/session` : propose une session spéciale, comme Nocturne, Matinale ou événement.',
+    'Les joueurs rejoignent avec les boutons. Le bot crée le salon quand le nombre demandé est atteint.',
+    '`/planning` : affiche les événements Discord prévus dans les prochains jours.',
+    '',
+    '**Stats EVA**',
+    '`/stat joueur:` : affiche les stats d’un joueur EVA.',
+    'Astuce : tape juste le pseudo si tu ne connais pas le discriminant, par exemple `TGMxRIBS`.',
+    '`/stat-equipe equipe:` : affiche salle, ligue, points, rang et roster d’une équipe.',
+    '`/classement site:` : affiche les équipes classées dans une ville ou salle EVA.',
+    '`/top` : affiche les meilleurs joueurs EVA de la major league, avec KDA et tendance.',
+    '`/top-equipe` : affiche les meilleures équipes EVA de la major league.',
+    '',
+    '**Utilitaires**',
+    '`/ping` : vérifie simplement que le bot répond.',
+    '',
+    '**Conseils**',
+    'Les champs avec autocomplétion proposent les joueurs, équipes et villes connus.',
+    'Si une stat manque, le profil EVA peut être privé ou pas encore indexé.',
+    'Les données EVA sont gardées en cache et rafraîchies régulièrement pour répondre vite.',
+  ];
+
+  await interaction.reply({ content: lines.join('\n'), flags: 64 });
+}
 
 async function gererCommandeMatch(interaction) {
   const type = interaction.commandName;

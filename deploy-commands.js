@@ -18,6 +18,10 @@ const {
 
 const commands = [
 
+  new SlashCommandBuilder()
+    .setName('help')
+    .setDescription('Affiche le guide simple des commandes JarlBot'),
+
   // ----------------------------------------
   // 🏓 /ping — Test de connexion du bot
   // ----------------------------------------
