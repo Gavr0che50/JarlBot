@@ -2,6 +2,10 @@
 setlocal
 cd /d "%~dp0"
 
+echo Arret des instances JarlBot precedentes...
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'node' -and ($_.CommandLine -match 'index\\.js' -or $_.CommandLine -match 'scripts\\\\launcher\\.js' -or $_.CommandLine -match 'deploy-commands\\.js' -or $_.CommandLine -match 'eva-refresh\\.js') } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }" >nul 2>nul
+
 where node >nul 2>nul
 if errorlevel 1 (
   echo Node.js est introuvable.
