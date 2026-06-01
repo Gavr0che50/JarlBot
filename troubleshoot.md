@@ -232,7 +232,7 @@ Le bot ne peut pas accéder à un salon ou une ressource.
 Le bot essaie d'accéder à un salon qui n'existe plus.
 
 **Solutions :**
-1. Supprime l'entrée obsolète dans `bot-state.db` via le bot ou recrée la base si nécessaire
+1. Supprime l'entrée dans `bot-state.db` via le bot ou recrée la base si nécessaire
 2. Redémarre le bot pour reprogrammer les tâches restantes
 
 ---
@@ -241,7 +241,7 @@ Le bot essaie d'accéder à un salon qui n'existe plus.
 Le bot cherche un message supprimé.
 
 **Solutions :**
-1. Supprime l'entrée obsolète dans `bot-state.db` via le bot ou recrée la base si nécessaire
+1. Supprime l'entrée dans `bot-state.db` via le bot ou recrée la base si nécessaire
 2. Pour repartir propre, supprime `bot-state.db` puis relance le bot pour reconstruire la base
 
 ### `EVA GraphQL error 429`

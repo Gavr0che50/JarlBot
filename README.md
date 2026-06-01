@@ -1,6 +1,6 @@
 # 🤖 JarlBot V1.4
 
-Bot Discord de gestion de **défis d'équipes** et de **sessions spéciales** pour communautés EVA.
+Bot Discord open source pour gérer des **défis d'équipes**, des **sessions spéciales** et des **statistiques EVA**.
 
 Création automatique de **salons privés**, **événements Discord**, **rappels programmés** (48h en MP, 24h et 1h dans le salon), validation par votes, et nettoyage automatique après les matchs.
 
@@ -133,9 +133,6 @@ EVA_ACCESS_TOKEN=ton_token_de_session_eva_optionnel
 EVA_EMAIL=ton_email_eva_optionnel
 EVA_PASSWORD=ton_mot_de_passe_eva_optionnel
 EVA_LOCAL_LEAGUES_CIRCUIT_ID=2395738311350114303
-EVA_CAEN_REGION_ID=2395741613538603007
-EVA_CAEN_RANKING_IDS=2489142894001680383,2441507312469446655
-EVA_CAEN_MIN_MATCHES=5
 EVA_PLAYER_MIN_MATCHES=5
 EVA_PUBLIC_PLAYER_BATCH_SIZE=8
 EVA_PUBLIC_USER_PAGE_LIMIT=0
@@ -188,7 +185,7 @@ Le cycle normal est de 24h (`EVA_V2_CACHE_TTL_MS`). Pour repartir d'une base EVA
 npm run eva-refresh:reset
 ```
 
-Cette commande vide les tables EVA v2 et l'ancien cache joueurs/equipes, puis reconstruit les rankings, equipes, rosters et joueurs major league.
+Cette commande vide les tables EVA v2 et le cache local, puis reconstruit les rankings, equipes, rosters et joueurs major league.
 
 ### Exporter une version portable
 
@@ -214,12 +211,7 @@ Le moteur EVA v2 respecte les contraintes observees de l'API Competitive: ranges
 npm run eva-public-refresh
 ```
 
-Ce worker est conserve pour compatibilite avec l'ancien moteur. Le chemin principal est maintenant `npm run eva-refresh` / `npm run eva-refresh:reset`.
-Il peut encore:
-- utiliser un `EVA_ACCESS_TOKEN` de session,
-- se faire seed avec des `userId` déjà connus,
-- réimporter les stats depuis le cache principal sans refaire d'appel réseau,
-- reprendre uniquement les profils manquants ou trop anciens.
+Le worker `npm run eva-public-refresh` reste disponible si tu veux enrichir le cache public, mais le chemin principal pour le bot est `npm run eva-refresh` / `npm run eva-refresh:reset`.
 
 ---
 
@@ -231,8 +223,6 @@ Toute la configuration éditable se trouve dans **`config.js`** :
 
 - API Competitive: `https://competitive.eva.gg/api`
 - GraphQL public app EVA: `https://api.eva.gg/graphql`
-- Librairie communautaire EVApy: utile comme reference d'exploration, mais le bot garde une implementation Node locale pour maitriser SQLite, le throttling et les commandes Discord.
-
 `config.js` est le fichier de réglage manuel principal. On y met les constantes métier et les durées du bot.  
 Le fichier `.env` reste pour les secrets, les IDs propres à un environnement, et les surcharges locales si besoin.
 
@@ -244,24 +234,18 @@ Le fichier `.env` reste pour les secrets, les IDs propres à un environnement, e
 | `RAPPEL_24H_AVANT_MATCH` | Rappel dans le salon (24h avant) |
 | `RAPPEL_1H_AVANT_MATCH` | Rappel dans le salon (1h avant) |
 | `DELAI_SUPPRESSION_SALON` | Délai avant suppression du salon (48h après) |
-| `EVA_DEFAULT_CAEN_REGION_ID` | Valeur de secours si l'ID de région Caen n'est pas fourni |
 | `EVA_DEFAULT_LOCAL_LEAGUES_CIRCUIT_ID` | Valeur de secours pour le circuit local leagues |
 | `EVA_RATE_LIMIT_MAX_DELAY_MS` | Plafond de ralentissement automatique après un 429 |
 | `EVA_GRAPHQL_TIMEOUT_MS` | Timeout des appels GraphQL EVA |
 | `EVA_CACHE_BEST_SCORE_BONUS` | Bonus de score appliqué à un cache marqué complet |
-| `EVA_CAEN_PUBLIC_PLAYERS_PRELOAD_LIMIT` | Nombre de joueurs Caen préchargés au démarrage |
 | `EVA_TEAM_LINEUP_DISPLAY_LIMIT` | Nombre max de joueurs affichés dans une lineup équipe |
 | `EVA_TOP_PLAYERS_LIMIT` | Nombre max de joueurs affichés par `/top` |
 | `EVA_PLANNING_WINDOW_DAYS` | Fenêtre temporelle affichée par `/planning` |
 | `EVA_COMPETITIVE_API_BASE_URL` | URL de base de l'API EVA Competitive |
 | `EVA_GRAPHQL_URL` | Endpoint GraphQL public utilisé par app.eva.gg |
 | `EVA_LOCAL_LEAGUES_CIRCUIT_ID` | Circuit Local Leagues EVA utilisé pour découvrir les tournois JARL |
-| `EVA_CAEN_REGION_ID` | Région Competitive EVA de Caen |
-| `EVA_CAEN_RANKING_IDS` | IDs de rankings JARL Caen, séparés par des virgules |
-| `EVA_CAEN_TOURNAMENT_IDS` | Optionnel : IDs de tournois JARL Caen à utiliser au lieu de l'auto-détection |
-| `EVA_CAEN_MIN_MATCHES` | Ancienne garde de matches pour l'autocomplete `/stat` (compatibilité) |
 | `EVA_PLAYER_SUGGESTIONS` | Fallback manuel de pseudos `Pseudo#123456`, séparés par des virgules |
-| `EVA_PLAYER_MIN_MATCHES` | Ancienne garde du cache joueurs, conservée pour compatibilité |
+| `EVA_PLAYER_MIN_MATCHES` | Seuil minimal de matches utilisé pour filtrer les profils trop maigres |
 | `EVA_PUBLIC_PLAYER_BATCH_SIZE` | Nombre de profils publics récupérés par requête GraphQL groupée |
 | `EVA_PUBLIC_USER_PAGE_LIMIT` | Limite optionnelle de pages pour le crawl public EVA |
 | `EVA_PUBLIC_SEED_USER_IDS` | Liste de `userId` EVA à injecter comme seeds |
@@ -312,8 +296,7 @@ JarlBot/
 │   ├── export-portable.js  ← Génère un dossier portable avec la DB
 │   └── eva-refresh.js      ← Worker EVA v2 24h / reset / full refresh
 └── utils/
-    ├── eva-v2.js           ← Moteur EVA v2 rapide et différentiel
-    └── eva.js              ← Ancien moteur EVA conservé en compatibilité
+    └── eva-v2.js           ← Moteur EVA v2 rapide et différentiel
 ```
 
 ---

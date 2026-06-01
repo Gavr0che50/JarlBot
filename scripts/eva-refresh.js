@@ -52,7 +52,7 @@ async function main() {
   log(`Mode ${isDaemon ? 'daemon' : 'one-shot'} | intervalle ${refreshMs} ms`);
 
   if (shouldReset) {
-    log('Reset demande: tables EVA v2 et ancien cache joueur/equipe vides.');
+    log('Reset demande: tables EVA v2 et cache local vides.');
     resetEvaV2Cache({ clearLegacy: true });
   }
 
