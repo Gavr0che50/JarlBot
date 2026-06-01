@@ -1,3 +1,9 @@
+## Local files and databases — DO NOT COMMIT
+# The following SQLite files contain local cache and bot state (IDs, user references,
+# possibly sensitive metadata). They must not be committed to the project repository.
+# If you want to share a baseline DB for testing, create a sanitized dump and
+# distribute it separately (release asset or script) instead of committing the DB.
+
 node_modules/
 .env
 resultats.json
@@ -5,5 +11,4 @@ eva-cache.db*
 bot-state.db*
 logs/
 .plan
-VULGARISATION.md
 dist/
