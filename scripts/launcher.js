@@ -709,8 +709,27 @@ const server = http.createServer((req, res) => {
   handle(req, res);
 });
 
-server.listen(PORT, () => {
-  const url = `http://localhost:${PORT}`;
-  log(`Launcher disponible sur ${url}`);
-  if (process.env.JARLBOT_LAUNCHER_NO_OPEN !== '1') openBrowser(url);
-});
+function listenOnAvailablePort(startPort, maxAttempts = 20) {
+  const tryListen = (port, remainingAttempts) => {
+    server.once('error', (err) => {
+      if (err.code === 'EADDRINUSE' && remainingAttempts > 0) {
+        log(`Port ${port} deja utilise, essai sur ${port + 1}.`);
+        tryListen(port + 1, remainingAttempts - 1);
+        return;
+      }
+      log(`Impossible de demarrer le launcher: ${err.message}`);
+      process.exit(1);
+    });
+
+    server.listen(port, () => {
+      const actualPort = server.address().port;
+      const url = `http://localhost:${actualPort}`;
+      log(`Launcher disponible sur ${url}`);
+      if (process.env.JARLBOT_LAUNCHER_NO_OPEN !== '1') openBrowser(url);
+    });
+  };
+
+  tryListen(startPort, maxAttempts);
+}
+
+listenOnAvailablePort(PORT);

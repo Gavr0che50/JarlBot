@@ -336,7 +336,7 @@ Si tu vois encore un ancien format, le salon a probablement été créé avant l
 1. Installe Node.js 24+ depuis `https://nodejs.org`
 2. Lance `npm install` si le dossier `node_modules` est absent
 3. Lance `npm run launcher` pour voir l'erreur dans le terminal
-4. Si le port est deja pris, change `JARLBOT_LAUNCHER_PORT=3051` dans `.env`
+4. Si le port est deja pris, le launcher essaie automatiquement le port suivant; si besoin, change quand même `JARLBOT_LAUNCHER_PORT=3051` dans `.env`
 
 ---
 
