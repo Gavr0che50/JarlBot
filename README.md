@@ -29,7 +29,7 @@ Création automatique de **salons privés**, **événements Discord**, **rappels
 
 ### 🛠️ Outils admin
 - **`/renfort`** — Inviter un renfort dans un salon privé, avec une équipe cible pour les scrims
-- **`/stat`** — Afficher les stats EVA d'un joueur compétitif public depuis le cache local
+- **`/stat`** — Afficher les stats EVA d'un joueur compétitif public depuis le cache local, avec meilleur match automatique si le discrim n'est pas fourni
 - **`/stat-equipe`** — Afficher les stats d'une équipe EVA depuis le cache local, avec son classement local quand disponible
 - **`/classement`** — Afficher le classement local EVA d'un site, par division, avec rafraîchissement hybride si la donnée est trop vieille
 - **`/top`** — Afficher le top des joueurs compétitifs EVA du cache local sur la saison en cours

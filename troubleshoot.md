@@ -238,6 +238,18 @@ Le worker EVA ou une commande live a trop sollicité l'API.
 
 ---
 
+### `Impossible de récupérer les stats EVA`
+La commande `/stat` n'a pas trouvé de correspondance assez proche pour le pseudo saisi.
+
+**Solutions :**
+1. Essaie le pseudo exact si tu le connais
+2. Vérifie que le joueur existe bien côté EVA public
+3. Attends que le worker public ait enrichi le cache local si le profil vient d'être découvert
+4. Si plusieurs joueurs sont proches du même pseudo, le bot garde le meilleur match local/public
+5. Si le profil n'est dans aucun cache local/public, l'annuaire EVA global peut rester inaccessible avec le token actuel
+
+---
+
 ### `Unhandled 'error' event` + crash complet
 Une erreur non gérée fait planter Node.js.
 

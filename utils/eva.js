@@ -313,6 +313,40 @@ function openEvaDb() {
       player_resolution_429_streak INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS eva_public_users (
+      user_id INTEGER PRIMARY KEY,
+      username TEXT,
+      display_name TEXT,
+      full_name TEXT,
+      is_public INTEGER,
+      esport_enabled INTEGER,
+      esport_location_ids TEXT,
+      first_seen_at INTEGER NOT NULL,
+      last_seen_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS eva_public_player_stats (
+      user_id INTEGER PRIMARY KEY,
+      player_id INTEGER,
+      username TEXT,
+      display_name TEXT,
+      current_stats TEXT,
+      all_stats TEXT,
+      season_id INTEGER,
+      refreshed_at INTEGER NOT NULL,
+      error TEXT,
+      FOREIGN KEY(user_id) REFERENCES eva_public_users(user_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_eva_public_users_username
+      ON eva_public_users(username);
+
+    CREATE INDEX IF NOT EXISTS idx_eva_public_users_display_name
+      ON eva_public_users(display_name);
+
+    CREATE INDEX IF NOT EXISTS idx_eva_public_stats_username
+      ON eva_public_player_stats(username);
   `);
   hydrateEvaRefreshStateFromDb(evaDb);
   return evaDb;
@@ -2651,6 +2685,193 @@ function findPlayer(username) {
   ) || null;
 }
 
+function normalizeLookupText(value) {
+  return String(value || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9#]+/g, '');
+}
+
+function getUsernameBase(username) {
+  return String(username || '').trim().split('#')[0] || '';
+}
+
+function safeParseJson(value, fallback = null) {
+  if (value == null || value === '') return fallback;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+}
+
+function levenshteinDistance(a, b) {
+  const left = String(a || '');
+  const right = String(b || '');
+  if (left === right) return 0;
+  if (!left.length) return right.length;
+  if (!right.length) return left.length;
+
+  let previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+  let current = new Array(right.length + 1).fill(0);
+
+  for (let i = 1; i <= left.length; i += 1) {
+    current[0] = i;
+    for (let j = 1; j <= right.length; j += 1) {
+      const insertion = current[j - 1] + 1;
+      const deletion = previous[j] + 1;
+      const substitution = previous[j - 1] + (left[i - 1] === right[j - 1] ? 0 : 1);
+      current[j] = Math.min(insertion, deletion, substitution);
+    }
+    [previous, current] = [current, previous];
+  }
+
+  return previous[right.length];
+}
+
+function getPlayerLookupFields(player) {
+  return uniqueBy([
+    player?.username || null,
+    getUsernameBase(player?.username),
+    player?.name || null,
+    player?.displayName || null,
+    player?.fullName || null,
+  ].filter(Boolean), value => normalizeLookupText(value));
+}
+
+function scorePlayerLookup(query, player) {
+  const normalizedQuery = normalizeLookupText(query);
+  if (!normalizedQuery) return 0;
+
+  let best = 0;
+  for (const field of getPlayerLookupFields(player)) {
+    const normalizedField = normalizeLookupText(field);
+    if (!normalizedField) continue;
+
+    if (normalizedField === normalizedQuery) {
+      best = Math.max(best, 100);
+      continue;
+    }
+
+    if (normalizedField === normalizeLookupText(getUsernameBase(field)) && normalizedField === normalizedQuery) {
+      best = Math.max(best, 99);
+      continue;
+    }
+
+    if (normalizeLookupText(getUsernameBase(field)) === normalizedQuery) {
+      best = Math.max(best, 98);
+      continue;
+    }
+
+    if (normalizedField.startsWith(normalizedQuery) || normalizedQuery.startsWith(normalizedField)) {
+      const proximity = Math.max(0, 90 - Math.abs(normalizedField.length - normalizedQuery.length));
+      best = Math.max(best, proximity);
+      continue;
+    }
+
+    if (normalizedField.includes(normalizedQuery) || normalizedQuery.includes(normalizedField)) {
+      const proximity = Math.max(0, 80 - Math.abs(normalizedField.length - normalizedQuery.length));
+      best = Math.max(best, proximity);
+      continue;
+    }
+
+    const distance = levenshteinDistance(normalizedQuery, normalizedField);
+    const scale = Math.max(normalizedQuery.length, normalizedField.length) || 1;
+    const similarity = 1 - (distance / scale);
+    best = Math.max(best, Math.round(similarity * 70));
+  }
+
+  return best;
+}
+
+function readPublicPlayerCandidates() {
+  const db = openEvaDb();
+  if (!db) return [];
+
+  try {
+    const rows = db.prepare(`
+      SELECT
+        u.user_id,
+        u.username,
+        u.display_name,
+        u.full_name,
+        u.is_public,
+        u.esport_enabled,
+        u.esport_location_ids,
+        s.player_id,
+        s.current_stats,
+        s.all_stats,
+        s.season_id,
+        s.refreshed_at
+      FROM eva_public_users u
+      LEFT JOIN eva_public_player_stats s ON s.user_id = u.user_id
+      WHERE COALESCE(s.error, '') = ''
+    `).all();
+
+    return rows.map(row => ({
+      source: 'public',
+      id: row.player_id || row.user_id,
+      userId: row.user_id,
+      competitiveUserId: row.player_id ? String(row.player_id) : null,
+      username: row.username || null,
+      name: row.full_name || row.display_name || row.username || '',
+      displayName: row.display_name || null,
+      fullName: row.full_name || null,
+      teamName: null,
+      current: safeParseJson(row.current_stats, null),
+      all: safeParseJson(row.all_stats, null),
+      seasonId: row.season_id || null,
+      refreshedAt: row.refreshed_at || 0,
+      isPublic: Boolean(row.is_public),
+      esportEnabled: Boolean(row.esport_enabled),
+    }));
+  } catch (err) {
+    console.warn(`⚠️ Impossible de lire les candidats publics EVA: ${err.message}`);
+    return [];
+  }
+}
+
+function findBestPlayerMatch(username, { includePublic = true } = {}) {
+  const query = String(username || '').trim();
+  if (!query) return null;
+
+  const cache = readEvaDataCache();
+
+  const candidates = [
+    ...cache.players.map(player => ({
+      source: 'competitive-cache',
+      id: player.id,
+      userId: player.userId || null,
+      competitiveUserId: player.competitiveUserId || null,
+      username: player.username || null,
+      name: player.name || player.username || '',
+      displayName: player.name || null,
+      fullName: null,
+      teamName: player.teamName || null,
+      current: player.current || null,
+      all: player.all || null,
+      seasonId: cache.activeSeason?.id || null,
+      refreshedAt: cache.updatedAt || 0,
+    })),
+    ...(includePublic ? readPublicPlayerCandidates() : []),
+  ].filter(player => player.username || player.name || player.displayName || player.fullName);
+
+  let best = null;
+  let bestScore = 0;
+
+  for (const candidate of candidates) {
+    const score = scorePlayerLookup(query, candidate);
+    if (score > bestScore) {
+      best = candidate;
+      bestScore = score;
+    }
+  }
+
+  if (!best || bestScore < 70) return null;
+  return { player: best, score: bestScore };
+}
+
 function findTeam(teamQuery) {
   const query = String(teamQuery || '').trim().toLowerCase();
   const teams = readEvaDataCache().teams;
@@ -2663,12 +2884,46 @@ function findTeam(teamQuery) {
   ) || null;
 }
 
-function getPlayerKdaStats(username) {
-  const player = findPlayer(username);
-  if (!player) throw new Error('Joueur compétitif absent du cache EVA ou profil non public.');
+async function getPlayerKdaStats(username) {
+  const exact = findPlayer(username);
+  if (exact) {
+    return {
+      playerName: exact.username,
+      playerId: exact.id,
+      userId: exact.userId,
+      seasonId: readEvaDataCache().activeSeason?.id,
+      seasonNumber: readEvaDataCache().activeSeason?.seasonNumber,
+      current: exact.current,
+      all: exact.all,
+    };
+  }
+
+  const resolved = findBestPlayerMatch(username, { includePublic: true });
+  if (!resolved) {
+    throw new Error('Joueur introuvable dans le cache EVA et aucun profil public assez proche.');
+  }
+
+  const player = resolved.player;
+  if ((player.current == null || player.all == null) && player.username) {
+    const seasonId = readEvaDataCache().activeSeason?.id;
+    const publicPlayer = await getPublicPlayerByUsername(player.username, seasonId).catch(() => null);
+    if (publicPlayer) {
+      const normalized = normalizePublicPlayerRecord(publicPlayer, player, player.username);
+      return {
+        playerName: normalized.username || normalized.name || player.username,
+        playerId: normalized.id,
+        userId: normalized.userId,
+        seasonId: seasonId,
+        seasonNumber: readEvaDataCache().activeSeason?.seasonNumber,
+        current: normalized.current,
+        all: normalized.all,
+      };
+    }
+  }
+
   return {
-    playerName: player.username,
-    playerId: player.id,
+    playerName: player.username || player.name,
+    playerId: player.id || player.userId,
     userId: player.userId,
     seasonId: readEvaDataCache().activeSeason?.id,
     seasonNumber: readEvaDataCache().activeSeason?.seasonNumber,
