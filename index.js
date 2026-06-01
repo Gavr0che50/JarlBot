@@ -24,19 +24,16 @@ const {
   sauverSession, getSession, lireSessions,
 } = require('./utils/storage');
 const {
-  getAllEvaTeams,
-  getAllEvaTeamsHybrid,
-  getCachedCompetitivePlayers,
-  getCachedCompetitivePlayersHybrid,
-  getCaenTeamStats,
-  getLocalLeagueStandings,
-  getLocalLeagueStandingsHybrid,
-  findLocalLeagueStanding,
-  getPlayerKdaStats,
-  getTopPlayers,
-  ensureEvaCacheFresh,
-  startEvaCacheRefreshScheduler,
-} = require('./utils/eva');
+  ensureEvaV2Fresh,
+  getEvaPlayerStats,
+  getEvaTeamStats,
+  getEvaCityStandings,
+  getEvaTopPlayers,
+  getEvaTopTeams,
+  searchPlayers,
+  searchTeams,
+  searchLocations,
+} = require('./utils/eva-v2');
 
 // ========================================
 // 🔌 Initialisation du client Discord
@@ -102,12 +99,23 @@ function genererNomSalonSession(session) {
 function handleReady() {
   console.log(`✅ Bot connecté en tant que ${client.user.tag} !`);
   reprogrammerTaches();
-getCachedCompetitivePlayers()
-    .then(players => console.log(`📊 Cache joueurs compétitifs EVA chargé (${players.length} joueur(s)).`))
-    .catch(err => console.error('❌ Impossible de précharger les joueurs compétitifs EVA :', err));
+  ensureEvaV2Fresh()
+    .then(status => console.log(`Cache EVA v2 pret (${status.teams} equipes, ${status.players} joueurs indexes).`))
+    .catch(err => console.error('Impossible de precharger le cache EVA v2 :', err));
+  demarrerRefreshEvaV2Periodique();
 }
 
 client.once('clientReady', handleReady);
+
+function demarrerRefreshEvaV2Periodique() {
+  const intervalMs = Number(config.EVA_V2_CACHE_TTL_MS || 24 * 60 * 60 * 1000);
+  const timer = setInterval(() => {
+    ensureEvaV2Fresh({ force: true })
+      .then(status => console.log(`Refresh EVA v2 periodique termine (${status.teams} equipes, ${status.players} joueurs).`))
+      .catch(err => console.error('Refresh EVA v2 periodique en erreur :', err));
+  }, intervalMs);
+  if (typeof timer.unref === 'function') timer.unref();
+}
 
 // ========================================
 // ⚡ Routeur d'interactions
@@ -140,6 +148,7 @@ client.on('interactionCreate', async (interaction) => {
         case 'stat-equipe': return gererCommandeStatEquipe(interaction);
         case 'classement': return gererCommandeClassement(interaction);
         case 'top': return gererCommandeTop(interaction);
+        case 'top-equipe': return gererCommandeTopEquipe(interaction);
         case 'planning': return gererCommandePlanning(interaction);
         case 'session': return gererCommandeSession(interaction);
       }
@@ -554,21 +563,22 @@ async function gererCommandeStat(interaction) {
   await interaction.deferReply({ flags: 64 });
 
   try {
-    await ensureEvaCacheFresh({ maxAgeMs: 24 * 60 * 60 * 1000 });
-    const data = await getPlayerKdaStats(joueur);
-    const content = [`📊 **Stats EVA de ${data.playerName || joueur}**`];
+    const data = await getEvaPlayerStats(joueur);
+    const content = [`Stats EVA de **${data.name || joueur}**`];
     const current = data.current || {};
+    const previous = data.previous || {};
     const all = data.all || {};
 
-    if (current.kda == null) {
-      content.push('ℹ️ KDA indisponible pour ce joueur.');
-    } else {
-      content.push(`⚔️ KDA saison en cours : **${formatNumber(current.kda)}**${all.kda != null ? ` (${formatNumber(all.kda)} all-time)` : ''}`);
+    if (data.username) content.push(`Profil : **${data.username}**`);
+    if (data.teamName) content.push(`Equipe : **${data.teamName}**`);
+    if (data.locationName || data.leagueName) {
+      const local = [data.locationName, data.leagueName].filter(Boolean).join(' - ');
+      content.push(`Ligue locale : **${local || 'N/A'}**${data.localRank ? ` | rang equipe #${data.localRank}` : ''}`);
     }
 
-    if (current.gameCount != null) {
-      content.push(`🎮 Matchs joués saison en cours : **${current.gameCount}**${all.gameCount != null ? ` (${all.gameCount} all-time)` : ''}`);
-    }
+    const trend = formatTrend(data.trend);
+    content.push(`KDA saison : **${formatNumber(current.kda)}**${previous.kda ? ` vs ${formatNumber(previous.kda)} saison precedente` : ''} (${trend})`);
+    content.push(`Matchs saison : **${current.gameCount || 0}**${all.gameCount != null ? ` (${all.gameCount} all-time)` : ''}`);
 
     const details = [];
     if (current.kills != null) details.push(`Kills: ${current.kills}`);
@@ -590,23 +600,28 @@ function formatNumber(value) {
   });
 }
 
+function formatTrend(value) {
+  if (value === 'hausse') return 'en hausse';
+  if (value === 'baisse') return 'en baisse';
+  return 'stable';
+}
+
+function limiterMessageDiscord(content, maxLength = 1900) {
+  if (content.length <= maxLength) return content;
+  return `${content.slice(0, maxLength - 20)}\n... (tronque)`;
+}
+
 async function gererAutocompleteStat(interaction) {
   const focused = interaction.options.getFocused().toLowerCase();
 
   try {
-    const players = await getCachedCompetitivePlayersHybrid({ maxAgeMs: 24 * 60 * 60 * 1000 });
-    const choices = players
-      .filter(player =>
-        player.name.toLowerCase().includes(focused) ||
-        player.username.toLowerCase().includes(focused) ||
-        (player.teamName || '').toLowerCase().includes(focused)
-      )
-      .slice(0, 25)
+    await ensureEvaV2Fresh();
+    const choices = searchPlayers(focused, 25)
       .map(player => ({
         name: tronquerChoixAutocomplete(
-          player.teamName ? `${player.name} - ${player.teamName}` : player.name
+          player.team_name ? `${player.name} - ${player.team_name}` : player.name
         ),
-        value: player.username,
+        value: player.eva_username || player.name,
       }));
 
     await interaction.respond(choices);
@@ -624,18 +639,13 @@ async function gererAutocompleteStatEquipe(interaction) {
   const focused = interaction.options.getFocused().toLowerCase();
 
   try {
-    const teams = await getAllEvaTeamsHybrid({ maxAgeMs: 24 * 60 * 60 * 1000 });
-    const choices = teams
-      .filter(team =>
-        team.name.toLowerCase().includes(focused) ||
-        (team.aliases || []).some(alias => alias.toLowerCase().includes(focused))
-      )
-      .slice(0, 25)
+    await ensureEvaV2Fresh();
+    const choices = searchTeams(focused, 25)
       .map(team => ({
         name: tronquerChoixAutocomplete(
-          `${team.name}${team.aliases?.length ? ` (${team.aliases.join(', ')})` : ''}`
+          team.current_region_name ? `${team.name} - ${team.current_region_name}` : team.name
         ),
-        value: team.aliases?.[0] || team.name,
+        value: team.name,
       }));
 
     await interaction.respond(choices);
@@ -649,18 +659,13 @@ async function gererAutocompleteClassement(interaction) {
   const focused = interaction.options.getFocused().toLowerCase();
 
   try {
-    const standings = await getLocalLeagueStandingsHybrid({ maxAgeMs: 24 * 60 * 60 * 1000 });
-    const choices = standings
-      .filter(standing =>
-        (standing.regionName || '').toLowerCase().includes(focused) ||
-        (standing.rankingName || '').toLowerCase().includes(focused)
-      )
-      .slice(0, 25)
+    await ensureEvaV2Fresh();
+    const choices = searchLocations(focused, 25)
       .map(standing => ({
         name: tronquerChoixAutocomplete(
-          `${standing.regionName || 'Site inconnu'} - ${standing.rankingName || 'Classement local'}`
+          `${standing.name || 'Site inconnu'} - ${standing.ranking_name || 'Classement local'}`
         ),
-        value: standing.regionId || standing.regionName || standing.rankingName,
+        value: standing.name || standing.ranking_name,
       }));
 
     await interaction.respond(choices);
@@ -677,26 +682,19 @@ async function gererCommandeStatEquipe(interaction) {
   await interaction.deferReply({ flags: 64 });
 
   try {
-    await ensureEvaCacheFresh({ maxAgeMs: 24 * 60 * 60 * 1000 });
-    const team = await getCaenTeamStats(equipe);
+    const team = await getEvaTeamStats(equipe);
     const teamContent = [
-      `📊 **Stats équipe EVA - ${team.name}**`,
-      `🌍 Scope : **Toutes les équipes EVA**`,
-      `🏟️ League / ranking : **${team.rankingName || 'Non classée'}**`,
-      team.divisionTeamCount > 0
-        ? `🏅 ${team.division} : **${team.divisionRank}/${team.divisionTeamCount}**`
-        : `🏅 Région / ligue : **${team.division || 'EVA'}**`,
-      `🏆 Points : **${team.points}** | Classement : **#${team.rank || team.position || 'N/A'}**`,
-      `🎮 Matchs : **${team.played}** | ✅ ${team.wins} | ➖ ${team.draws} | ❌ ${team.losses}`,
+      `Stats equipe EVA - **${team.name}**`,
+      `Salle / ville : **${team.current_region_name || 'N/A'}**`,
+      `Ligue : **${team.current_ranking_name || 'Non classee'}**`,
+      `Classement local : **#${team.current_rank || team.current_position || 'N/A'}**`,
+      `Points saison : **${team.current_points || 0}** (${formatTrend(team.trend_label)})`,
+      `Matchs : **${team.current_played || 0}** | W ${team.current_wins || 0} | D ${team.current_draws || 0} | L ${team.current_losses || 0}`,
     ];
 
-    if (team.aliases?.length) teamContent.push(`🏷️ Tag(s) détecté(s) : **${team.aliases.join(', ')}**`);
-    if (team.lineup?.length) teamContent.push(`👥 Lineup connue : ${team.lineup.slice(0, Number(config.EVA_TEAM_LINEUP_DISPLAY_LIMIT || 8)).join(', ')}`);
-    if (team.lastMatch?.opponents?.length) {
-      const match = team.lastMatch.opponents
-        .map(opponent => `${opponent.name} ${opponent.score ?? '-'}`)
-        .join(' vs ');
-      teamContent.push(`📌 Dernier match : ${match}`);
+    if (team.previous_points != null) teamContent.push(`Saison precedente : **${team.previous_points} pts**, rang **#${team.previous_rank || 'N/A'}**`);
+    if (team.roster?.length) {
+      teamContent.push(`Roster : ${team.roster.slice(0, Number(config.EVA_TEAM_LINEUP_DISPLAY_LIMIT || 8)).map(player => player.eva_username || player.name).join(', ')}`);
     }
 
     await interaction.editReply({ content: teamContent.join('\n') });
@@ -712,44 +710,23 @@ async function gererCommandeClassement(interaction) {
   await interaction.deferReply({ flags: 64 });
 
   try {
-    const query = String(site || '').trim().toLowerCase();
-    const standings = await getLocalLeagueStandingsHybrid({ maxAgeMs: 24 * 60 * 60 * 1000 });
-    const selectedStanding = standings.find(standing =>
-      standing.regionId === site ||
-      (standing.regionName || '').toLowerCase() === query ||
-      (standing.rankingName || '').toLowerCase() === query ||
-      (standing.regionName || '').toLowerCase().includes(query) ||
-      (standing.rankingName || '').toLowerCase().includes(query)
-    );
-    if (!selectedStanding) {
-      return interaction.editReply({ content: `❌ Site introuvable dans le cache EVA local : **${site}**.` });
+    const standings = await getEvaCityStandings(site);
+    if (!standings.rankings.length) {
+      return interaction.editReply({ content: `Aucun classement local trouve pour **${site}**.` });
     }
 
-    const divisions = new Map();
-
-    for (const team of selectedStanding.teams || []) {
-      const key = team.division || 'Division inconnue';
-      if (!divisions.has(key)) divisions.set(key, []);
-      divisions.get(key).push(team);
+    const lines = [`Classements EVA - **${standings.locationName}**`];
+    for (const ranking of standings.rankings.slice(0, 4)) {
+      lines.push(`\n**${ranking.ranking_name}${ranking.season_name ? ` - ${ranking.season_name}` : ''}**`);
+      const teams = [...(ranking.teams || [])]
+        .sort((a, b) => b.points - a.points || a.rank - b.rank || a.team_name.localeCompare(b.team_name, 'fr'))
+        .slice(0, 15);
+      for (const team of teams) {
+        lines.push(`#${team.rank || team.position || '-'} **${team.team_name}** - ${team.points} pts (${team.played || 0} match${team.played > 1 ? 's' : ''})`);
+      }
     }
 
-    const lines = [`🏆 **Classement ${selectedStanding.rankingName}${selectedStanding.seasonName ? ` - ${selectedStanding.seasonName}` : ''}**`];
-    const sortedDivisions = [...divisions.entries()]
-      .sort(([aName, aTeams], [bName, bTeams]) =>
-        (aTeams[0]?.divisionNumber || parseDivisionNumberFromLabel(aName)) -
-        (bTeams[0]?.divisionNumber || parseDivisionNumberFromLabel(bName))
-      );
-
-    for (const [division, teams] of sortedDivisions) {
-      lines.push(`\n**${division}**`);
-      teams
-        .sort((a, b) => b.points - a.points || b.wins - a.wins || a.name.localeCompare(b.name, 'fr'))
-        .forEach((team, index) => {
-          lines.push(`${index + 1}. **${team.name}** - ${team.points} pts (${team.played} match${team.played > 1 ? 's' : ''})`);
-        });
-    }
-
-    await interaction.editReply({ content: lines.join('\n') });
+    await interaction.editReply({ content: limiterMessageDiscord(lines.join('\n')) });
   } catch (err) {
     console.error('❌ Erreur commande /classement :', err);
     await interaction.editReply({ content: `❌ Impossible de récupérer le classement local. ${err.message}` });
@@ -765,21 +742,19 @@ async function gererCommandeTop(interaction) {
   await interaction.deferReply({ flags: 64 });
 
   try {
-    const cachedPlayers = await getCachedCompetitivePlayersHybrid({ maxAgeMs: 24 * 60 * 60 * 1000 });
-    const players = getTopPlayers(Number(config.EVA_TOP_PLAYERS_LIMIT || 10));
+    const limit = Number(config.EVA_TOP_PLAYERS_LIMIT || 10);
+    const players = await getEvaTopPlayers(limit);
     if (players.length === 0) {
-      return interaction.editReply({ content: '❌ Aucun top joueur disponible dans le cache EVA local.' });
+      return interaction.editReply({ content: 'Aucun top joueur disponible dans la base EVA v2.' });
     }
 
     const lines = [
-      `🏆 **Top ${Number(config.EVA_TOP_PLAYERS_LIMIT || 10)} joueurs compétitifs EVA - saison en cours**`,
-      `👥 **Total joueurs compétitifs affichés dans le top : ${players.length}**`,
-      `**(DEBUG) : Nombre total de joueurs actuel dans le cache : ${cachedPlayers.length}**`,
+      `Top ${limit} joueurs EVA - major league`,
     ];
     players.forEach((player, index) => {
       lines.push(
-        `${index + 1}. **${player.name}** (${player.username}) - KDA **${formatNumber(player.current.kda)}** ` +
-        `(${player.current.gameCount} match${player.current.gameCount > 1 ? 's' : ''})`
+        `${index + 1}. **${player.name}**${player.teamName ? ` - ${player.teamName}` : ''} - KDA **${formatNumber(player.kda)}** ` +
+        `(${player.gameCount} match${player.gameCount > 1 ? 's' : ''}, ${formatTrend(player.trend)})`
       );
     });
 
@@ -787,6 +762,32 @@ async function gererCommandeTop(interaction) {
   } catch (err) {
     console.error('❌ Erreur commande /top :', err);
     await interaction.editReply({ content: `❌ Impossible de lire le top joueurs. ${err.message}` });
+  }
+}
+
+async function gererCommandeTopEquipe(interaction) {
+  await interaction.deferReply({ flags: 64 });
+
+  try {
+    const limit = Number(config.EVA_TOP_PLAYERS_LIMIT || 10);
+    const teams = await getEvaTopTeams(limit);
+    if (teams.length === 0) {
+      return interaction.editReply({ content: 'Aucun top equipe disponible dans la base EVA v2.' });
+    }
+
+    const lines = [`Top ${limit} equipes EVA - major league`];
+    teams.forEach((team, index) => {
+      const diff = Number(team.score_for || 0) - Number(team.score_against || 0);
+      lines.push(
+        `${index + 1}. **${team.team_name}** - ${team.points} pts ` +
+        `(${team.wins || 0}W/${team.draws || 0}D/${team.losses || 0}L, diff ${diff >= 0 ? '+' : ''}${diff}, ${formatTrend(team.trend_label)})`
+      );
+    });
+
+    await interaction.editReply({ content: lines.join('\n') });
+  } catch (err) {
+    console.error('❌ Erreur commande /top-equipe :', err);
+    await interaction.editReply({ content: `❌ Impossible de lire le top equipes. ${err.message}` });
   }
 }
 

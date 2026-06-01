@@ -76,8 +76,12 @@ GUILD_ID=id_de_ton_serveur_discord
 CATEGORIE_DEFIS_ID=id_de_la_categorie_pour_les_salons
 EVA_GRAPHQL_URL=https://api.eva.gg/graphql
 EVA_ACCESS_TOKEN=token_de_session_eva_optionnel
-EVA_PUBLIC_SEED_USER_IDS=
-EVA_PUBLIC_MIN_INTERVAL_MS=250
+EVA_MAJOR_TOURNAMENT_IDS=2385727403616917503
+EVA_V2_CACHE_TTL_MS=86400000
+EVA_V2_MIN_INTERVAL_MS=120
+EVA_V2_HTTP_TIMEOUT_MS=10000
+EVA_V2_TEAM_MEMBER_REFRESH_LIMIT=250
+EVA_V2_TEAM_MEMBER_FULL_REFRESH_LIMIT=2000
 ```
 
 ### Comment récupérer ces valeurs ?
@@ -232,9 +236,31 @@ Le worker EVA ou une commande live a trop sollicité l'API.
 
 **Solutions :**
 1. Attends la fin du backoff automatique
-2. Baisse `EVA_PUBLIC_MIN_INTERVAL_MS`
-3. Baisse `EVA_PUBLIC_STAT_BATCH_SIZE`
+2. Augmente `EVA_V2_MIN_INTERVAL_MS`
+3. Baisse `EVA_V2_TEAM_MEMBER_REFRESH_LIMIT`
 4. Laisse le cache local servir les commandes si les données ont moins de 24h
+
+---
+
+### `EVA range 416`
+L'API Competitive refuse un `Range` trop large ou au-dela du nombre total de resultats.
+
+**Solutions :**
+1. Verifie que tu utilises bien le moteur EVA v2 actuel
+2. Garde des pages de 50 elements maximum
+3. Relance `npm run eva-refresh`
+4. Si le probleme revient apres modification du code, verifier `fetchRange()` dans `utils/eva-v2.js`
+
+---
+
+### `database is locked`
+Deux processus ecrivent dans `eva-cache.db` en meme temps.
+
+**Solutions :**
+1. Coupe les anciens processus `node index.js` ou `node scripts/eva-refresh.js --daemon`
+2. Lance un seul worker de refresh a la fois
+3. Relance `npm run eva-refresh:reset` si le cache est incoherent
+4. Le moteur v2 utilise WAL + `busy_timeout`, mais il ne faut pas multiplier les workers
 
 ---
 
@@ -244,9 +270,19 @@ La commande `/stat` n'a pas trouvé de correspondance assez proche pour le pseud
 **Solutions :**
 1. Essaie le pseudo exact si tu le connais
 2. Vérifie que le joueur existe bien côté EVA public
-3. Attends que le worker public ait enrichi le cache local si le profil vient d'être découvert
+3. Attends que `npm run eva-refresh:reset` ou le daemon ait indexe le roster de son equipe
 4. Si plusieurs joueurs sont proches du même pseudo, le bot garde le meilleur match local/public
-5. Si le profil n'est dans aucun cache local/public, l'annuaire EVA global peut rester inaccessible avec le token actuel
+5. Si le profil n'est dans aucun roster local/public, l'annuaire EVA global peut rester inaccessible avec le token actuel
+
+---
+
+### `/top` est lent au premier appel
+La commande hydrate quelques joueurs major league si le cache manque de stats publiques.
+
+**Solutions :**
+1. Lance `npm run eva-refresh:reset` pour prehydrater les joueurs major
+2. Augmente `EVA_V2_MAJOR_PLAYER_FULL_REFRESH_LIMIT` si le top manque de joueurs
+3. Baisse `EVA_V2_COMMAND_PLAYER_HYDRATE_LIMIT` si tu veux zero attente en commande
 
 ---
 

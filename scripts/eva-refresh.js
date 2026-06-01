@@ -1,13 +1,24 @@
 require('dotenv').config();
 
 const config = require('../config');
-const { getPlayerDiscoveryQueueStats, refreshEvaDataCache } = require('../utils/eva');
+const {
+  ensureEvaV2Fresh,
+  getEvaV2Status,
+  refreshMajorPlayerStats,
+  resetEvaV2Cache,
+} = require('../utils/eva-v2');
 
 const isDaemon = process.argv.includes('--daemon') || process.env.EVA_REFRESH_DAEMON === '1';
-const refreshMs = Number(process.env.EVA_DATA_REFRESH_MS || config.EVA_DATA_REFRESH_MS || 12 * 60 * 60 * 1000);
+const isFull = process.argv.includes('--full') || process.env.EVA_REFRESH_FULL === '1';
+const shouldReset = process.argv.includes('--reset') || process.env.EVA_REFRESH_RESET === '1';
+const refreshMs = Number(
+  process.env.EVA_V2_CACHE_TTL_MS ||
+  config.EVA_V2_CACHE_TTL_MS ||
+  24 * 60 * 60 * 1000
+);
 
 function log(message) {
-  console.log(`[EVA-WORKER] ${message}`);
+  console.log(`[EVA-V2-WORKER] ${message}`);
 }
 
 function wait(ms) {
@@ -16,76 +27,61 @@ function wait(ms) {
 
 async function runRefresh(cycle) {
   const startedAt = Date.now();
-  log(`Cycle ${cycle} démarré.`);
-  try {
-    const before = getPlayerDiscoveryQueueStats();
-    log(
-      `Queue avant: total=${before.total} ready=${before.ready} ` +
-      `pending=${before.pending} missing=${before.missing} resolved=${before.resolved} deferred=${before.deferred}`
-    );
-    const result = await refreshEvaDataCache({ force: true });
-    const cache = result?.cache || result;
-    const after = getPlayerDiscoveryQueueStats();
-    const duration = Date.now() - startedAt;
-    log(
-      `Cycle ${cycle} terminé en ${duration} ms | ` +
-      `joueurs ${cache.players?.length || 0} | équipes ${cache.teams?.length || 0} | ` +
-      `buildComplete=${Boolean(cache.buildComplete)}`
-    );
-    log(
-      `Queue après: total=${after.total} ready=${after.ready} ` +
-      `pending=${after.pending} missing=${after.missing} resolved=${after.resolved} deferred=${after.deferred}`
-    );
-    if (result?.deferredUntil && result.deferredUntil > Date.now()) {
-      log(`Cycle ${cycle} différé jusqu'à ${new Date(result.deferredUntil).toLocaleString('fr-FR')} (429).`);
-    }
-    return result;
-  } catch (err) {
-    log(`Cycle ${cycle} en erreur: ${err.message}`);
-    throw err;
-  }
+  log(`Cycle ${cycle} demarre${isFull ? ' en mode full' : ''}.`);
+
+  const before = getEvaV2Status();
+  log(
+    `Avant: locations=${before.locations} rankings=${before.rankings} ` +
+    `teams=${before.teams} players=${before.players} majorTeams=${before.majorTeams}`
+  );
+
+  let status = await ensureEvaV2Fresh({ force: true, full: isFull });
+  const majorHydrated = await refreshMajorPlayerStats({ full: isFull });
+  status = getEvaV2Status();
+  const duration = Date.now() - startedAt;
+  log(
+    `Cycle ${cycle} termine en ${Math.round(duration / 1000)}s | ` +
+    `locations=${status.locations} rankings=${status.rankings} teams=${status.teams} ` +
+    `rankingItems=${status.rankingItems} players=${status.players} majorTeams=${status.majorTeams} ` +
+    `majorPlayersHydrated=${majorHydrated}`
+  );
+  return status;
 }
 
 async function main() {
   log(`Mode ${isDaemon ? 'daemon' : 'one-shot'} | intervalle ${refreshMs} ms`);
-  let cycle = 1;
 
-  let firstResult = await runRefresh(cycle++);
-  if (firstResult?.deferredUntil && firstResult.deferredUntil > Date.now()) {
-    const delayMs = Math.max(0, firstResult.deferredUntil - Date.now());
-    log(`Pause ${delayMs} ms avant reprise après 429.`);
-    await wait(delayMs);
+  if (shouldReset) {
+    log('Reset demande: tables EVA v2 et ancien cache joueur/equipe vides.');
+    resetEvaV2Cache({ clearLegacy: true });
   }
+
+  let cycle = 1;
+  await runRefresh(cycle++);
   if (!isDaemon) return;
 
   while (true) {
-    const nextDelay = firstResult?.deferredUntil && firstResult.deferredUntil > Date.now()
-      ? Math.max(0, firstResult.deferredUntil - Date.now())
-      : refreshMs;
-    log(`Pause ${nextDelay} ms avant le prochain cycle.`);
-    await wait(nextDelay);
+    log(`Pause ${refreshMs} ms avant le prochain cycle.`);
+    await wait(refreshMs);
     try {
-      firstResult = await runRefresh(cycle++);
-      if (firstResult?.deferredUntil && firstResult.deferredUntil > Date.now()) {
-        continue;
-      }
+      await runRefresh(cycle++);
     } catch (err) {
-      log(`Cycle ${cycle - 1} interrompu, reprise dans ${refreshMs} ms.`);
+      log(`Cycle ${cycle - 1} en erreur: ${err.message}`);
     }
   }
 }
 
 process.on('SIGINT', () => {
-  log('Arrêt demandé (SIGINT).');
+  log('Arret demande (SIGINT).');
   process.exit(0);
 });
 
 process.on('SIGTERM', () => {
-  log('Arrêt demandé (SIGTERM).');
+  log('Arret demande (SIGTERM).');
   process.exit(0);
 });
 
 main().catch(err => {
-  console.error('[EVA-WORKER] Arrêt fatal:', err);
+  console.error('[EVA-V2-WORKER] Arret fatal:', err);
   process.exit(1);
 });

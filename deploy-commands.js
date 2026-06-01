@@ -182,7 +182,11 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName('top')
-    .setDescription('Affiche le top des joueurs compétitifs EVA du cache local'),
+    .setDescription('Affiche le top des joueurs EVA depuis la major league'),
+
+  new SlashCommandBuilder()
+    .setName('top-equipe')
+    .setDescription('Affiche le top des equipes EVA depuis la major league'),
 
   new SlashCommandBuilder()
     .setName('planning')

@@ -6,6 +6,8 @@
   "scripts": {
     "start": "node index.js",
     "eva-refresh": "node scripts/eva-refresh.js",
+    "eva-refresh:full": "node scripts/eva-refresh.js --full",
+    "eva-refresh:reset": "node scripts/eva-refresh.js --reset --full",
     "eva-refresh:daemon": "node scripts/eva-refresh.js --daemon",
     "eva-public-refresh": "node scripts/eva-public-refresh.js",
     "eva-public-status": "node scripts/eva-public-refresh.js --status",
