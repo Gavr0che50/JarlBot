@@ -49,6 +49,8 @@ const client = new Client({
   partials: [Partials.Message, Partials.Channel, Partials.Reaction],
 });
 
+const confirmationsAnnulationMatch = new Map();
+
 // ========================================
 // 🛠️ Utilitaires généraux
 // ========================================
@@ -78,6 +80,16 @@ function genererNomSalon(defi, guild) {
     .replace(/:/g, '-')
     .replace(/[^0-9-]/g, '');
   return `${defi.type}-${date}-${heure}`.toLowerCase();
+}
+
+function construireBoutonAnnulationMatch(defi) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`${config.BUTTON_ID_ANNULER_MATCH}:${defi.messageId}`)
+      .setLabel('Annuler le match')
+      .setEmoji('🛑')
+      .setStyle(ButtonStyle.Danger),
+  );
 }
 
 /** Génère un nom de salon basé sur la session */
@@ -166,6 +178,9 @@ client.on('interactionCreate', async (interaction) => {
         interaction.customId === config.BUTTON_ID_QUITTER
       ) {
         return gererBoutonSession(interaction);
+      }
+      if (interaction.customId.startsWith(config.BUTTON_ID_ANNULER_MATCH)) {
+        return gererBoutonAnnulationMatch(interaction);
       }
     }
   } catch (err) {
@@ -317,6 +332,15 @@ client.on('messageReactionAdd', async (reaction, user) => {
         await validerDefi(reaction.message, matchData);
       }
     }
+  } else if (emoji === config.EMOJI_REFUSER && matchData.type !== 'free') {
+    const adversaireCount = await getRoleMemberCount(guild, matchData.adversaireId);
+    const threshold = adversaireCount === 0 ? 1 : Math.min(4, adversaireCount);
+    const votes = await compterVotesRefus(reaction, guild, matchData.adversaireId);
+    console.log(`🗳️ ${matchData.type} ${reaction.message.id} : ${votes}/${threshold} votes refus (${adversaireCount} membres au rôle)`);
+
+    if (votes >= threshold) {
+      await refuserDefi(reaction.message, matchData);
+    }
   }
 });
 
@@ -336,6 +360,25 @@ async function compterVotesValides(reaction, guild, roleId) {
   if (!reactionPositive) return 0;
 
   const users = await reactionPositive.users.fetch();
+  let count = 0;
+
+  for (const [, u] of users) {
+    if (u.bot) continue;
+    if (!roleId) {
+      count++;
+      continue;
+    }
+    const m = await guild.members.fetch(u.id).catch(() => null);
+    if (m && m.roles.cache.has(roleId)) count++;
+  }
+  return count;
+}
+
+async function compterVotesRefus(reaction, guild, roleId) {
+  const reactionNegative = reaction.message.reactions.cache.get(config.EMOJI_REFUSER);
+  if (!reactionNegative) return 0;
+
+  const users = await reactionNegative.users.fetch();
   let count = 0;
 
   for (const [, u] of users) {
@@ -400,12 +443,23 @@ function trouverSessionParSalonId(salonId) {
   return Object.entries(sessions).find(([, session]) => session.salonId === salonId) || [null, null];
 }
 
+function trouverDefiParMessageOuSalonId(messageId) {
+  const defis = lireDefis();
+  return (
+    Object.entries(defis).find(([, defi]) => defi.messageId === messageId) ||
+    Object.entries(defis).find(([, defi]) => defi.messageBienvenueId === messageId) ||
+    Object.entries(defis).find(([, defi]) => defi.salonId === messageId) ||
+    [null, null]
+  );
+}
+
 // ========================================
 // ✅ Validation d'un défi
 // ========================================
 
 async function validerDefi(message, defi) {
   const guild = message.guild;
+  defi.messageId = message.id;
   defi.valide = true;
 
   if (defi.type === 'free') {
@@ -430,6 +484,10 @@ async function validerDefi(message, defi) {
     // 2. Message de bienvenue + réaction ⏰
     const bienvenue = await salon.send(config.MESSAGES.BIENVENUE_SALON_PRIVE(defi));
     await bienvenue.react(config.EMOJI_RAPPEL_MP);
+    await bienvenue.edit({
+      content: `${config.MESSAGES.BIENVENUE_SALON_PRIVE(defi)}\n\nBouton disponible pour annuler le match.`,
+      components: [construireBoutonAnnulationMatch(defi)],
+    }).catch(() => {});
     defi.messageBienvenueId = bienvenue.id;
 
     // 3. Événement Discord
@@ -446,6 +504,41 @@ async function validerDefi(message, defi) {
     console.error('❌ Erreur validation défi :', err);
     await message.reply(config.MESSAGES.ERREUR_VALIDATION);
   }
+}
+
+async function refuserDefi(message, defi) {
+  defi.refuse = true;
+  sauverDefi(message.id, defi);
+
+  if (message.editable) {
+    await message.edit({
+      content: `${message.content}\n\n⛔ Le match a été refusé par vote.`,
+      components: [],
+    }).catch(() => {});
+  }
+
+  supprimerDefi(message.id);
+}
+
+async function annulerDefi(defi, publicMessageId, reason = 'annulation') {
+  const channel = defi.salonId ? await client.channels.fetch(defi.salonId).catch(() => null) : null;
+  if (channel) {
+    await channel.delete(`Match ${reason}`).catch(err => {
+      console.error(`❌ Impossible de supprimer le salon ${defi.salonId} :`, err.message);
+    });
+  }
+
+  const guild = channel?.guild || client.guilds.cache.get(defi.guildId);
+  if (guild && defi.eventId) {
+    const event = await guild.scheduledEvents.fetch(defi.eventId).catch(() => null);
+    if (event) {
+      await event.delete(`Match ${reason}`).catch(err => {
+        console.error(`❌ Impossible de supprimer l'événement ${defi.eventId} :`, err.message);
+      });
+    }
+  }
+
+  supprimerDefi(publicMessageId);
 }
 
 async function creerSalonPrive(guild, defi) {
@@ -642,9 +735,9 @@ function formatNumber(value) {
 }
 
 function formatTrend(value) {
-  if (value === 'hausse') return 'en hausse';
-  if (value === 'baisse') return 'en baisse';
-  return 'stable';
+  if (value === 'hausse') return '🟢 ↗ en hausse';
+  if (value === 'baisse') return '🔴 ↘ en baisse';
+  return '⚪ → stable';
 }
 
 function limiterMessageDiscord(content, maxLength = 1900) {
@@ -1103,6 +1196,49 @@ function construireBoutonsSession() {
       .setEmoji('❌')
       .setStyle(ButtonStyle.Secondary),
   );
+}
+
+async function gererBoutonAnnulationMatch(interaction) {
+  const [defiId, defi] = trouverDefiParMessageOuSalonId(interaction.message.id);
+  if (!defi) {
+    return interaction.reply({ content: '❌ Ce match n’existe plus.', flags: 64 });
+  }
+
+  if (!defi.salonId) {
+    return interaction.reply({ content: '❌ Ce match n’a pas encore de salon privé à annuler.', flags: 64 });
+  }
+
+  const key = `${interaction.message.id}:${interaction.user.id}`;
+  const now = Date.now();
+  const confirmation = confirmationsAnnulationMatch.get(key);
+
+  if (!confirmation || confirmation.expiresAt < now) {
+    confirmationsAnnulationMatch.set(key, { expiresAt: now + (30 * 1000) });
+    setTimeout(() => {
+      const current = confirmationsAnnulationMatch.get(key);
+      if (current && current.expiresAt <= Date.now()) confirmationsAnnulationMatch.delete(key);
+    }, 31 * 1000).unref?.();
+
+    return interaction.reply({
+      content: 'Vous êtes sûr ? Recliquez sur le bouton pour confirmer l’annulation.',
+      flags: 64,
+    });
+  }
+
+  confirmationsAnnulationMatch.delete(key);
+  await annulerDefi(defi, defiId, 'annulation confirmée');
+
+  if (interaction.message.editable) {
+    await interaction.message.edit({
+      content: `${interaction.message.content}\n\n🛑 Match annulé.`,
+      components: [],
+    }).catch(() => {});
+  }
+
+  return interaction.reply({
+    content: '🛑 Le match a bien été annulé.',
+    flags: 64,
+  });
 }
 
 async function gererBoutonSession(interaction) {

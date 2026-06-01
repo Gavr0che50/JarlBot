@@ -13,8 +13,10 @@ Création automatique de **salons privés**, **événements Discord**, **rappels
 - **`/scrim`** — Match d'entraînement compétitif
 - **`/free`** — Recherche libre de joueurs avec niveau attendu imposé
 - Validation par votes ✅ de l'équipe adverse (seuil configurable)
+- Refus possible par votes ❌ sur le message de validation, avec le même seuil que l'acceptation
 - Création automatique d'un **salon privé** réservé aux participants
 - Création automatique d'un **événement Discord** (visible dans la barre latérale)
+- Bouton d'annulation dans le salon privé, avec confirmation en deux clics avant suppression
 - **Rappels programmés** :
   - 48h avant → MP aux joueurs qui ont réagi ⏰
   - 24h avant → message dans le salon privé
@@ -73,6 +75,30 @@ Tu peux aussi le lancer en terminal:
 ```bash
 npm run launcher
 ```
+
+### Installation depuis GitHub ou via npm
+
+Le projet est préparé comme un paquet npm public et peut aussi être installé directement depuis GitHub:
+
+```bash
+npm install github:Gavr0che50/JarlBot
+```
+
+Ou, une fois publié sur npm:
+
+```bash
+npm install jarlbot
+```
+
+Le paquet contient le bot, le launcher et les scripts de refresh. Le fichier `.env` et les bases SQLite locales restent à créer sur la machine cible pour garder les secrets hors du package.
+
+Pour générer une archive distributable locale:
+
+```bash
+npm run pack:dist
+```
+
+Cela produit un `.tgz` dans `dist/` que tu peux partager ou publier.
 
 ### 1. Cloner / récupérer le projet
 ```bash
@@ -314,6 +340,7 @@ Pour tester sans attendre les votes :
 1. Dans `config.js`, mets `SEUIL_VALIDATION: 1`
 2. Lance un défi avec `/mix` ou `/scrim`
 3. Réagis avec ✅ → le défi est validé immédiatement
+4. Réagis avec ❌ → le défi peut être refusé si le seuil de votes est atteint
 
 ---
 

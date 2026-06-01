@@ -3,8 +3,18 @@
   "version": "1.0.0",
   "description": "Discord bot and portable launcher for EVA community administration.",
   "main": "index.js",
+  "author": "Gavr0che",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Gavr0che50/JarlBot.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Gavr0che50/JarlBot/issues"
+  },
+  "homepage": "https://github.com/Gavr0che50/JarlBot#readme",
   "scripts": {
     "start": "node index.js",
+    "pack:dist": "npm pack --pack-destination dist",
     "eva-refresh": "node scripts/eva-refresh.js",
     "eva-refresh:full": "node scripts/eva-refresh.js --full",
     "eva-refresh:reset": "node scripts/eva-refresh.js --reset --full",
@@ -17,9 +27,24 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
-  "author": "",
   "license": "MIT",
   "type": "commonjs",
+  "files": [
+    "index.js",
+    "config.js",
+    "deploy-commands.js",
+    "scripts/",
+    "utils/",
+    "README.md",
+    "troubleshoot.md",
+    "VULGARISATION.md",
+    "LICENSE",
+    "JarlBot Launcher.cmd",
+    "launcher.sh"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
     "node": ">=24.0.0"
   },

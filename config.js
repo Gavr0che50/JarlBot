@@ -45,6 +45,8 @@ module.exports = {
 
   BUTTON_ID_REJOINDRE: 'session_join',
   BUTTON_ID_QUITTER:   'session_leave',
+  BUTTON_ID_ANNULER_MATCH: 'match_cancel',
+  BUTTON_ID_CONFIRM_ANNULATION: 'match_cancel_confirm',
 
 
   // ========================================
