@@ -26,6 +26,7 @@ const {
 const {
   ensureEvaV2Fresh,
   getEvaPlayerStats,
+  getTeamPlayerStats,
   getEvaTeamStats,
   getEvaCityStandings,
   getEvaTopPlayers,
@@ -125,7 +126,17 @@ async function handleReady() {
     }
 
     const start = Date.now();
-    const status = await ensureEvaV2Fresh({ force: true });
+    const progressCallback = (ev) => {
+      try {
+        const elapsed = Date.now() - start;
+        const pct = ev.current && ev.total ? Math.round((ev.current / ev.total) * 100) : null;
+        const pctStr = pct != null ? ` ${pct}%` : '';
+        const counts = (ev.current || '') + (ev.total ? `/${ev.total}` : '');
+        const extra = ev.error ? ` — error: ${ev.error}` : '';
+        console.log(`🔁 [EVA] ${ev.step} ${ev.status}${pctStr} — ${counts}${extra}`);
+      } catch (e) {}
+    };
+    const status = await ensureEvaV2Fresh({ force: true, progressCallback });
     const duration = Date.now() - start;
     console.log(`Cache EVA v2 pret (${status.teams} equipes, ${status.players} joueurs indexes) — terminé en ${Math.round(duration/1000)}s.`);
   } catch (err) {
@@ -147,7 +158,17 @@ function demarrerRefreshEvaV2Periodique() {
           console.log(`⏳ Refresh periodique EVA v2 estimé ~ ${Math.round(eta.estimatedMs / 60000)} min (${eta.estimatedRequests} requêtes)`);
         }
         const start = Date.now();
-        const status = await ensureEvaV2Fresh({ force: true });
+        const progressCallback = (ev) => {
+          try {
+            const elapsed = Date.now() - start;
+            const pct = ev.current && ev.total ? Math.round((ev.current / ev.total) * 100) : null;
+            const pctStr = pct != null ? ` ${pct}%` : '';
+            const counts = (ev.current || '') + (ev.total ? `/${ev.total}` : '');
+            const extra = ev.error ? ` — error: ${ev.error}` : '';
+            console.log(`🔁 [EVA][periodic] ${ev.step} ${ev.status}${pctStr} — ${counts}${extra}`);
+          } catch (e) {}
+        };
+        const status = await ensureEvaV2Fresh({ force: true, progressCallback });
         const duration = Date.now() - start;
         console.log(`Refresh EVA v2 periodique termine (${status.teams} equipes, ${status.players} joueurs) — ${Math.round(duration/1000)}s.`);
       } catch (err) {
@@ -724,6 +745,8 @@ async function gererCommandeStat(interaction) {
 
   try {
     const data = await getEvaPlayerStats(joueur);
+    const teamPlayers = data.teamId ? await getTeamPlayerStats(data.teamId) : [];
+    const miniPhrase = buildPlayerStatPhrase(data, teamPlayers);
     const content = [`Stats EVA de **${data.name || joueur}**`];
     const current = data.current || {};
     const previous = data.previous || {};
@@ -731,6 +754,7 @@ async function gererCommandeStat(interaction) {
 
     if (data.username) content.push(`Profil : **${data.username}**`);
     if (data.teamName) content.push(`Equipe : **${data.teamName}**`);
+    if (miniPhrase) content.push(miniPhrase);
     if (data.locationName || data.leagueName) {
       const local = [data.locationName, data.leagueName].filter(Boolean).join(' - ');
       content.push(`Ligue locale : **${local || 'N/A'}**${data.localRank ? ` | rang equipe #${data.localRank}` : ''}`);
@@ -758,6 +782,46 @@ function formatNumber(value) {
   return Number(value).toLocaleString('fr-FR', {
     maximumFractionDigits: 2,
   });
+}
+
+const POSITIVE_EMOJIS = ['🎉', '🔥', '💪', '🏆', '🚀', '✨'];
+const NEGATIVE_EMOJIS = ['😅', '🤦', '🫠', '🧨', '🐌', '🥴'];
+
+function randomEmoji(list) {
+  return list[Math.floor(Math.random() * list.length)];
+}
+
+function buildPlayerStatPhrase(data, teamPlayers = []) {
+  if (!data || !data.current || !teamPlayers.length) return null;
+  const self = teamPlayers.find(player =>
+    String(player.playerId) === String(data.playerId) ||
+    player.eva_username === data.username ||
+    player.name === data.name
+  );
+  if (!self) return null;
+
+  const value = currentValue => Number(self.current[currentValue] || 0);
+  const isTop = stat => teamPlayers.every(player => Number(player.current[stat] || 0) <= value(stat));
+
+  if (self.current.kills && isTop('kills')) {
+    return `${randomEmoji(POSITIVE_EMOJIS)} Joueur ayant le plus de kills de son équipe !`;
+  }
+  if (self.current.assists && isTop('assists')) {
+    return `${randomEmoji(POSITIVE_EMOJIS)} Joueur ayant le plus d'assists de son équipe !`;
+  }
+  if (self.current.kda && isTop('kda')) {
+    return `${randomEmoji(POSITIVE_EMOJIS)} Meilleur KDA de son équipe !`;
+  }
+  if (self.current.deaths && isTop('deaths') && Number(self.current.kda || 0) < 1) {
+    return `${randomEmoji(NEGATIVE_EMOJIS)} Trop de morts cette saison, ça pique...`;
+  }
+  if (data.trend === 'hausse') {
+    return `${randomEmoji(POSITIVE_EMOJIS)} Progression visible, continue comme ça !`;
+  }
+  if (data.trend === 'baisse') {
+    return `${randomEmoji(NEGATIVE_EMOJIS)} Ouille, cette saison est un peu compliquée...`;
+  }
+  return null;
 }
 
 function formatTrend(value) {

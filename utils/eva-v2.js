@@ -413,7 +413,8 @@ async function getActiveSeason() {
   return data.seasonActive || null;
 }
 
-async function refreshLocations() {
+async function refreshLocations(progressCallback = null) {
+  if (progressCallback) progressCallback({ step: 'locations', status: 'start' });
   const data = await graphql(`
     query LocationList {
       locations(includesComingSoon: false, includesClosed: false, onlyVisible: true) {
@@ -438,20 +439,27 @@ async function refreshLocations() {
       refreshed_at = excluded.refreshed_at
   `);
 
+  const nodes = data.locations?.nodes || [];
   const stamp = now();
   db.exec('BEGIN IMMEDIATE');
   try {
-    for (const location of data.locations?.nodes || []) {
+    let i = 0;
+    for (const location of nodes) {
       stmt.run(location.id, location.identifier || null, location.name || '', location.country || null, normalizeKey(`${location.name} ${location.identifier}`), stamp);
+      i += 1;
+      if (progressCallback && i % 50 === 0) progressCallback({ step: 'locations', status: 'progress', current: i, total: nodes.length });
     }
     db.exec('COMMIT');
+    if (progressCallback) progressCallback({ step: 'locations', status: 'done', current: nodes.length, total: nodes.length });
   } catch (err) {
     db.exec('ROLLBACK');
+    if (progressCallback) progressCallback({ step: 'locations', status: 'error', error: err.message });
     throw err;
   }
 }
 
-async function refreshRankingsAndTeams() {
+async function refreshRankingsAndTeams(progressCallback = null) {
+  if (progressCallback) progressCallback({ step: 'rankings_teams', status: 'start' });
   const db = openDb();
   const [rankings, teams] = await Promise.all([
     fetchRange('/circuit-rankings', 'rankings', 100),
@@ -518,9 +526,16 @@ async function refreshRankingsAndTeams() {
   const stamp = now();
   db.exec('BEGIN IMMEDIATE');
   try {
-    for (const team of teams.filter(team => team.discipline === 'after_humanity')) {
+    const filteredTeams = teams.filter(team => team.discipline === 'after_humanity');
+    let tcount = 0;
+    for (const team of filteredTeams) {
       teamStmt.run(team.id, team.name || '', normalizeKey(team.name), Number(team.memberCount || 0), stamp);
+      tcount += 1;
+      if (progressCallback && tcount % 50 === 0) progressCallback({ step: 'teams', status: 'progress', current: tcount, total: filteredTeams.length });
     }
+    if (progressCallback) progressCallback({ step: 'teams', status: 'done', current: tcount, total: filteredTeams.length });
+
+    let rcount = 0;
     for (const ranking of localRankings) {
       rankingStmt.run(
         ranking.id,
@@ -536,13 +551,19 @@ async function refreshRankingsAndTeams() {
         normalizeKey(`${ranking.name} ${ranking.region?.name}`),
         stamp
       );
+      rcount += 1;
+      if (progressCallback && rcount % 20 === 0) progressCallback({ step: 'rankings', status: 'progress', current: rcount, total: localRankings.length });
     }
+    if (progressCallback) progressCallback({ step: 'rankings', status: 'done', current: rcount, total: localRankings.length });
+
     db.exec('COMMIT');
   } catch (err) {
     db.exec('ROLLBACK');
+    if (progressCallback) progressCallback({ step: 'rankings_teams', status: 'error', error: err.message });
     throw err;
   }
 
+  let processed = 0;
   for (const ranking of localRankings) {
     const params = new URLSearchParams({ ranking_ids: ranking.id });
     const items = await fetchRange(`/circuit-ranking-items?${params.toString()}`, 'items', 100);
@@ -571,13 +592,17 @@ async function refreshRankingsAndTeams() {
         );
       }
       db.exec('COMMIT');
+      processed += 1;
+      if (progressCallback && processed % 5 === 0) progressCallback({ step: 'ranking_items', status: 'progress', current: processed, total: localRankings.length });
     } catch (err) {
       db.exec('ROLLBACK');
+      if (progressCallback) progressCallback({ step: 'ranking_items', status: 'error', error: err.message });
       throw err;
     }
   }
 
   rebuildTeamRankingSummary();
+  if (progressCallback) progressCallback({ step: 'rankings_teams', status: 'done' });
 }
 
 function rebuildTeamRankingSummary() {
@@ -677,7 +702,7 @@ async function refreshTeamRoster(teamId, teamName = null) {
   return members || [];
 }
 
-async function refreshStaleRosters({ full = false } = {}) {
+async function refreshStaleRosters({ full = false } = {}, progressCallback = null) {
   const db = openDb();
   const limit = full ? TEAM_MEMBER_FULL_REFRESH_LIMIT : TEAM_MEMBER_REFRESH_LIMIT;
   const rows = db.prepare(`
@@ -692,12 +717,15 @@ async function refreshStaleRosters({ full = false } = {}) {
   `).all(now(), CACHE_TTL_MS, limit);
 
   let refreshed = 0;
+  if (progressCallback) progressCallback({ step: 'rosters', status: 'start', current: 0, total: rows.length });
   for (const row of rows) {
     await refreshTeamRoster(row.team_id, row.name).catch(err => {
       console.warn(`[EVA-V2] roster ${row.name} skipped: ${err.message}`);
     });
     refreshed += 1;
+    if (progressCallback && refreshed % 10 === 0) progressCallback({ step: 'rosters', status: 'progress', current: refreshed, total: rows.length });
   }
+  if (progressCallback) progressCallback({ step: 'rosters', status: 'done', current: refreshed, total: rows.length });
   return refreshed;
 }
 
@@ -907,16 +935,25 @@ function findBestLocation(query) {
   return bestScore >= 70 ? best : null;
 }
 
-async function ensureEvaV2Fresh({ force = false, full = false } = {}) {
+async function ensureEvaV2Fresh({ force = false, full = false, progressCallback = null } = {}) {
   if (refreshPromise) return refreshPromise;
   refreshPromise = (async () => {
     if (force || isStale('core_refresh')) {
-      await refreshLocations().catch(err => console.warn(`[EVA-V2] locations skipped: ${err.message}`));
-      await refreshRankingsAndTeams();
-      await refreshMajorLeague();
+      await refreshLocations(progressCallback).catch(err => {
+        console.warn(`[EVA-V2] locations skipped: ${err.message}`);
+        if (progressCallback) progressCallback({ step: 'locations', status: 'error', error: err.message });
+      });
+      await refreshRankingsAndTeams(progressCallback).catch(err => {
+        console.warn(`[EVA-V2] rankings/teams skipped: ${err.message}`);
+        if (progressCallback) progressCallback({ step: 'rankings_teams', status: 'error', error: err.message });
+      });
+      await refreshMajorLeague(progressCallback).catch(err => {
+        console.warn(`[EVA-V2] major league skipped: ${err.message}`);
+        if (progressCallback) progressCallback({ step: 'major_league', status: 'error', error: err.message });
+      });
       setMeta('core_refresh', '1');
     }
-    await refreshStaleRosters({ full });
+    await refreshStaleRosters({ full }, progressCallback);
     return getEvaV2Status();
   })().finally(() => {
     refreshPromise = null;
@@ -924,14 +961,20 @@ async function ensureEvaV2Fresh({ force = false, full = false } = {}) {
   return refreshPromise;
 }
 
-async function refreshMajorLeague() {
+async function refreshMajorLeague(progressCallback = null) {
+  if (progressCallback) progressCallback({ step: 'major_league', status: 'start' });
   const db = openDb();
   const teamStats = new Map();
   const stamp = now();
+  let tournamentCount = 0;
 
   for (const tournamentId of MAJOR_TOURNAMENT_IDS) {
+    tournamentCount += 1;
+    if (progressCallback) progressCallback({ step: 'major_league', status: 'tournament_start', current: tournamentCount, total: MAJOR_TOURNAMENT_IDS.length, tournamentId });
     const participants = await fetchRange(`/participants?${new URLSearchParams({ tournament_ids: tournamentId }).toString()}`, 'participants', 100);
+    let pcount = 0;
     for (const participant of participants) {
+      pcount += 1;
       const teamId = participant.team?.id;
       const teamName = participant.team?.name || participant.name;
       if (!teamId) continue;
@@ -960,10 +1003,13 @@ async function refreshMajorLeague() {
         if (!playerId || !member.name) continue;
         playerStmt.run(String(playerId), member.name, normalizeKey(member.name), teamId, teamName || null, stamp);
       }
+      if (progressCallback && pcount % 20 === 0) progressCallback({ step: 'major_league', status: 'participants_progress', current: pcount, tournamentId });
     }
 
     const matches = await fetchRange(`/matches?${new URLSearchParams({ tournament_ids: tournamentId }).toString()}`, 'matches', 100);
+    let mcount = 0;
     for (const match of matches.filter(item => item.status === 'completed')) {
+      mcount += 1;
       for (const opponent of match.opponents || []) {
         const teamId = opponent.participant?.team?.id;
         const teamName = opponent.participant?.name || opponent.participant?.team?.name;
@@ -985,7 +1031,9 @@ async function refreshMajorLeague() {
           stat.losses += 1;
         }
       }
+      if (progressCallback && mcount % 50 === 0) progressCallback({ step: 'major_league', status: 'matches_progress', current: mcount, tournamentId });
     }
+    if (progressCallback) progressCallback({ step: 'major_league', status: 'tournament_done', current: tournamentCount, tournamentId });
   }
 
   const stmt = db.prepare(`
@@ -1006,12 +1054,17 @@ async function refreshMajorLeague() {
   `);
   db.exec('BEGIN IMMEDIATE');
   try {
+    let scount = 0;
     for (const stat of teamStats.values()) {
       stmt.run(stat.teamId, stat.teamName || '', stat.wins, stat.draws, stat.losses, stat.points, stat.scoreFor, stat.scoreAgainst, stat.played, stamp);
+      scount += 1;
+      if (progressCallback && scount % 50 === 0) progressCallback({ step: 'major_league', status: 'write_stats_progress', current: scount });
     }
     db.exec('COMMIT');
+    if (progressCallback) progressCallback({ step: 'major_league', status: 'done', current: scount });
   } catch (err) {
     db.exec('ROLLBACK');
+    if (progressCallback) progressCallback({ step: 'major_league', status: 'error', error: err.message });
     throw err;
   }
 }
@@ -1051,8 +1104,10 @@ async function getEvaPlayerStats(query) {
   const previous = safeJsonParse(player.previous_stats, {});
   const all = safeJsonParse(player.all_stats, {});
   return {
+    playerId: player.player_user_id,
     name: player.display_name || splitUsernameBase(player.eva_username) || player.name,
     username: player.eva_username,
+    teamId: player.team_id,
     teamName: player.team_name,
     leagueName: player.current_ranking_name,
     locationName: player.current_region_name,
@@ -1063,6 +1118,24 @@ async function getEvaPlayerStats(query) {
     previous,
     all,
   };
+}
+
+function getTeamPlayerStats(teamId) {
+  if (!teamId) return [];
+  const rows = openDb().prepare(`
+    SELECT player_user_id, name, eva_username, current_stats
+    FROM eva_v2_players
+    WHERE team_id = ? AND current_stats IS NOT NULL
+  `).all(teamId);
+
+  return rows
+    .map(player => ({
+      playerId: player.player_user_id,
+      name: player.name,
+      eva_username: player.eva_username,
+      current: safeJsonParse(player.current_stats, {}),
+    }))
+    .filter(player => player.current && Number(player.current.gameCount || 0) > 0);
 }
 
 async function getEvaTeamStats(query) {
@@ -1231,6 +1304,7 @@ function resetEvaV2Cache({ clearLegacy = false } = {}) {
 module.exports = {
   ensureEvaV2Fresh,
   getEvaPlayerStats,
+  getTeamPlayerStats,
   getEvaTeamStats,
   getEvaCityStandings,
   getEvaTopPlayers,
