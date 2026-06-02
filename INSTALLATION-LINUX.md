@@ -93,7 +93,8 @@ JARLBOT_MODE=prod
 Variables utiles du launcher :
 
 ```env
-JARLBOT_LAUNCHER_PORT=3050
+JARLBOT_LAUNCHER_PORT=4050
+JARLBOT_LAUNCHER_HOST=127.0.0.1
 JARLBOT_LAUNCHER_NO_OPEN=0
 ```
 
@@ -137,8 +138,10 @@ JARLBOT_LAUNCHER_NO_OPEN=1 ./launcher.sh
 Puis ouvre l'URL depuis ton poste :
 
 ```text
-http://IP_DU_SERVEUR:3050
+http://IP_DU_SERVEUR:4050
 ```
+
+Pour accéder au launcher depuis une autre machine, utilise `JARLBOT_LAUNCHER_HOST=0.0.0.0` et ouvre `http://IP_DU_SERVEUR:4050`.
 
 Si le port est déjà utilisé, change `JARLBOT_LAUNCHER_PORT` dans `.env`.
 

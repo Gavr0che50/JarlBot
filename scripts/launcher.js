@@ -13,7 +13,8 @@ const LAUNCHER_LOG = path.join(LOG_DIR, 'launcher.log');
 const BOT_OUT_LOG = path.join(LOG_DIR, 'bot.out.log');
 const BOT_ERR_LOG = path.join(LOG_DIR, 'bot.err.log');
 const REFRESH_LOG = path.join(LOG_DIR, 'eva-refresh.out.log');
-const PORT = Number(process.env.JARLBOT_LAUNCHER_PORT || 3050);
+const PORT = Number(process.env.JARLBOT_LAUNCHER_PORT || 4050);
+const HOST = process.env.JARLBOT_LAUNCHER_HOST || '127.0.0.1';
 
 let botProcess = null;
 let refreshProcess = null;
@@ -696,24 +697,32 @@ const server = http.createServer((req, res) => {
   handle(req, res);
 });
 
-function listenOnAvailablePort(startPort, maxAttempts = 20) {
+function listenOnAvailablePort(startPort, maxAttempts = 250) {
   const tryListen = (port, remainingAttempts) => {
-    server.once('error', (err) => {
-      if (err.code === 'EADDRINUSE' && remainingAttempts > 0) {
-        log(`Port ${port} deja utilise, essai sur ${port + 1}.`);
+    const onError = (err) => {
+      server.off('listening', onListening);
+      if ((err.code === 'EADDRINUSE' || err.code === 'EACCES') && remainingAttempts > 0) {
+        const reason = err.code === 'EADDRINUSE' ? 'deja utilise' : 'indisponible ou reserve';
+        log(`Port ${port} ${reason}, essai sur ${port + 1}.`);
         tryListen(port + 1, remainingAttempts - 1);
         return;
       }
       log(`Impossible de demarrer le launcher: ${err.message}`);
       process.exit(1);
-    });
+    };
 
-    server.listen(port, () => {
+    const onListening = () => {
+      server.off('error', onError);
       const actualPort = server.address().port;
-      const url = `http://localhost:${actualPort}`;
-      log(`Launcher disponible sur ${url}`);
+      const displayHost = HOST === '0.0.0.0' || HOST === '::' ? 'localhost' : HOST;
+      const url = `http://${displayHost}:${actualPort}`;
+      log(`Launcher disponible sur ${url} (${HOST})`);
       if (process.env.JARLBOT_LAUNCHER_NO_OPEN !== '1') openBrowser(url);
-    });
+    };
+
+    server.once('error', onError);
+    server.once('listening', onListening);
+    server.listen(port, HOST);
   };
 
   tryListen(startPort, maxAttempts);

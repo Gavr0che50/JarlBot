@@ -84,7 +84,8 @@ JARLBOT_MODE=prod
 Variables utiles du launcher :
 
 ```env
-JARLBOT_LAUNCHER_PORT=3050
+JARLBOT_LAUNCHER_PORT=4050
+JARLBOT_LAUNCHER_HOST=127.0.0.1
 JARLBOT_LAUNCHER_NO_OPEN=0
 ```
 
@@ -112,7 +113,7 @@ Lancement avec interface locale :
 npm run launcher
 ```
 
-Par défaut, le launcher ouvre `http://localhost:3050`. Si le port est déjà utilisé, change `JARLBOT_LAUNCHER_PORT` dans `.env`.
+Par défaut, le launcher ouvre `http://127.0.0.1:4050`. Si le port est déjà utilisé, change `JARLBOT_LAUNCHER_PORT` dans `.env`.
 
 Tu peux aussi utiliser le fichier `JarlBot Launcher.cmd`.
 

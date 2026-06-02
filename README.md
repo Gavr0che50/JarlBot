@@ -118,7 +118,7 @@ Au premier lancement sans `eva-cache.db`, l'import initial peut prendre du temps
 
 ## Launcher local
 
-Le launcher démarre une interface web locale, par défaut sur `http://localhost:3050`.
+Le launcher démarre une interface web locale, par défaut sur `http://127.0.0.1:4050`.
 
 ```bash
 npm run launcher
