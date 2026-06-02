@@ -102,6 +102,7 @@ Le fichier `.env` n'est jamais copié dans l'export portable. C'est volontaire :
 5. Réagis avec ⏰ dans le salon privé pour tester le rappel MP.
 6. Crée un second `/mix`, réagis avec ❌, puis vérifie que le défi est refusé.
 7. Teste `/free` et `/session` : une seule inscription doit suffire en mode test.
-8. Repasse en `JARLBOT_MODE=prod` avant l'utilisation réelle.
+8. 5 minutes après le premier démarrage, teste les commandes `/top` `/stat` etc. La BDD a besoin de refresh et les données ne sont pas disponibles avant ce délai. 
+9. Repasse en `JARLBOT_MODE=prod` avant l'utilisation réelle.
 
 Si le salon n'est pas créé, vérifie en priorité `CATEGORIE_DEFIS_ID`, la position du rôle du bot et les permissions **Manage Channels** / **View Channels**.
