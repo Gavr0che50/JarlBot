@@ -1,4 +1,4 @@
-# 🤖 JarlBot V1.7.5
+# 🤖 JarlBot V1.7.5 - Finale
 
 Bot Discord open source pour gérer des **défis d'équipes**, des **sessions spéciales** et des **statistiques EVA**.
 
