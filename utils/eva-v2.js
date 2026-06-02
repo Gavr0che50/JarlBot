@@ -292,6 +292,11 @@ function hasUsableCache() {
   }
 }
 
+function checkpointEvaV2Cache() {
+  const db = openDb();
+  return db.prepare('PRAGMA wal_checkpoint(TRUNCATE)').get();
+}
+
 function getEvaRuntimeStatus() {
   return {
     dbFile: DB_FILE,
@@ -1161,7 +1166,10 @@ async function ensureEvaV2Fresh({ force = false, full = false, progressCallback 
       });
     }
     await refreshStaleRosters({ full }, progressCallback);
-    await refreshMajorPlayerStats({ full });
+    await refreshMajorPlayerStats({ full, progressCallback });
+    if (progressCallback) progressCallback({ step: 'finalize', status: 'start' });
+    checkpointEvaV2Cache();
+    if (progressCallback) progressCallback({ step: 'finalize', status: 'done' });
     return getEvaV2Status();
   })()
     .then(status => {
@@ -1482,7 +1490,7 @@ async function refreshLocalTournaments(progressCallback = null) {
   return tournaments.length;
 }
 
-async function refreshMajorPlayerStats({ full = false, limit = null } = {}) {
+async function refreshMajorPlayerStats({ full = false, limit = null, progressCallback = null } = {}) {
   const db = openDb();
   const resolvedLimit = Number(limit || (full ? MAJOR_PLAYER_FULL_REFRESH_LIMIT : MAJOR_PLAYER_REFRESH_LIMIT));
   const stamp = now();
@@ -1490,15 +1498,23 @@ async function refreshMajorPlayerStats({ full = false, limit = null } = {}) {
     SELECT *
     FROM eva_v2_players
     WHERE is_major = 1
-      AND (stats_retry_after IS NULL OR stats_retry_after = 0 OR stats_retry_after <= ?)
+    AND (stats_retry_after IS NULL OR stats_retry_after = 0 OR stats_retry_after <= ?)
     ORDER BY stats_refreshed_at ASC
     LIMIT ?
   `).all(stamp, resolvedLimit);
   let hydrated = 0;
   let attempted = 0;
+  let processed = 0;
   const errors = new Map();
+  if (progressCallback) progressCallback({ step: 'player_stats', status: 'start', current: 0, total: players.length });
   for (const player of players) {
-    if (player.current_stats && now() - Number(player.stats_refreshed_at || 0) <= CACHE_TTL_MS) continue;
+    processed += 1;
+    if (player.current_stats && now() - Number(player.stats_refreshed_at || 0) <= CACHE_TTL_MS) {
+      if (progressCallback && (processed % 5 === 0 || processed === players.length)) {
+        progressCallback({ step: 'player_stats', status: 'progress', current: processed, total: players.length });
+      }
+      continue;
+    }
     attempted += 1;
     try {
       await hydratePlayerStats(player);
@@ -1508,11 +1524,15 @@ async function refreshMajorPlayerStats({ full = false, limit = null } = {}) {
       const key = String(err?.message || err || 'Erreur stats EVA');
       errors.set(key, (errors.get(key) || 0) + 1);
     }
-    if (attempted % 5 === 0) await wait(0);
+    if (progressCallback && (processed % 5 === 0 || processed === players.length)) {
+      progressCallback({ step: 'player_stats', status: 'progress', current: processed, total: players.length });
+    }
+    if (processed % 5 === 0) await wait(0);
   }
   for (const [message, count] of errors.entries()) {
     console.warn(`[EVA-V2] major players skipped: ${count} x ${message}`);
   }
+  if (progressCallback) progressCallback({ step: 'player_stats', status: 'done', current: players.length, total: players.length });
   return hydrated;
 }
 
@@ -1847,6 +1867,7 @@ module.exports = {
   getEvaCommandUnavailableReason,
   getEvaV2Status,
   isEvaV2CacheReady,
+  checkpointEvaV2Cache,
   resetEvaV2Cache,
   refreshMajorPlayerStats,
   fetchCount,
