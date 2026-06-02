@@ -37,7 +37,7 @@ Après l'invitation, monte le rôle du bot assez haut dans **Paramètres du serv
 ## 3. Préparer le serveur Discord
 
 1. Crée une catégorie dédiée, par exemple `Matchs JARL`.
-2. Active le mode développeur Discord, puis copie l'ID de cette catégorie. Il ira dans `.env` sous `CATEGORIE_DEFIS_ID`.
+2. Active le mode développeur Discord, puis copie l'ID de cette catégorie. Il ira dans `.env` sous `CATEGORIE_DEFIS_ID`. Copie aussi l'ID de ton serveur. Il ira sous `GUILD_ID`.
 3. Vérifie que les équipes ont chacune un rôle Discord clair, par exemple `ECYPS`, `TSA`, `Fury`.
 4. Les joueurs doivent avoir le rôle de leur équipe. Le seuil de validation ne compte que les votes des membres du rôle adverse.
 
