@@ -17,7 +17,6 @@ const entries = [
   'INSTALLATION-WINDOWS.md',
   'INSTALLATION-LINUX.md',
   'troubleshoot.md',
-  'VULGARISATION.md',
   'LICENSE',
   'package.json',
   'package-lock.json',
