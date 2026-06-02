@@ -325,12 +325,13 @@ Une erreur non gérée fait planter Node.js.
 ---
 
 ### Le nom du salon privé n'est pas celui attendu
-Les salons de match utilisent le format `type-date-heure`.
+Les salons privés utilisent le format `type-equipe1-vs-equipe2-date` pour les matchs. Les frees et sessions utilisent le format simple `type-date-heure`.
 
 Exemples:
+- `mix-ecyps-vs-fury-01-06-2026`
+- `scrim-tsa-vs-eva-caen-01-06-2026`
 - `free-01-06-2026-18-00`
-- `mix-01-06-2026-20-30`
-- `scrim-01-06-2026-21-00`
+- `nocturne-01-06-2026-22-00`
 
 Si tu vois encore un ancien format, le salon a probablement été créé avant la mise à jour ou le bot n'a pas été redémarré.
 
@@ -393,4 +394,4 @@ C'est volontaire. L'export ne copie pas `.env` pour eviter une fuite du token Di
 
 ---
 
-*JarlBot V1.7.2 — Document mis à jour le 02/06/2026*
+*JarlBot V1.7.3 — Document mis à jour le 02/06/2026*

@@ -1,4 +1,4 @@
-# 🤖 JarlBot V1.7.2
+# 🤖 JarlBot V1.7.3
 
 Bot Discord open source pour gérer des **défis d'équipes**, des **sessions spéciales** et des **statistiques EVA**.
 
@@ -20,6 +20,7 @@ Création automatique de **salons privés**, **événements Discord**, **rappels
 - Validation par votes ✅ de l'équipe adverse (seuil configurable)
 - Refus possible par votes ❌ sur le message de validation, avec le même seuil que l'acceptation
 - Création automatique d'un **salon privé** réservé aux participants
+- Nommage des salons privés: `type-equipe1-vs-equipe2-date` pour les matchs, `free-date-heure` et `typedesession-date-heure` pour les frees/sessions
 - Création automatique d'un **événement Discord** (visible dans la barre latérale)
 - Bouton d'annulation dans le salon privé, avec confirmation en deux clics avant suppression
 - **Rappels programmés** :

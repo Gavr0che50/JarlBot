@@ -1,5 +1,5 @@
 // ========================================
-// 🤖 JarlBot — V1.7.2
+// 🤖 JarlBot — V1.7.3
 // Bot de gestion de défis d'équipes + sessions
 // ========================================
 
@@ -70,6 +70,28 @@ function getNomRole(guild, roleId, fallback = 'Équipe') {
   return role ? role.name : fallback;
 }
 
+function slugSalon(value, fallback = 'jarlbot') {
+  const normalized = String(value || fallback)
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return normalized || fallback;
+}
+
+function formatDateSalon(date) {
+  return slugSalon(String(date || '').replace(/\//g, '-'), 'date');
+}
+
+function formatHeureSalon(heure) {
+  return slugSalon(String(heure || '').replace(/:/g, '-'), 'heure');
+}
+
+function tronquerNomSalon(name) {
+  return String(name).slice(0, 100).replace(/-+$/g, '');
+}
+
 /** Programme une tâche si la date est dans le futur */
 function planifier(nom, date, maintenant, callback) {
   if (date > maintenant) schedule.scheduleJob(nom, date, callback);
@@ -106,11 +128,16 @@ function getJoueursRequisSession(session) {
 
 /** Génère un nom de salon basé sur le défi */
 function genererNomSalon(defi, guild) {
-  const date = defi.date.replace(/\//g, '-');
-  const heure = String(defi.heure || '')
-    .replace(/:/g, '-')
-    .replace(/[^0-9-]/g, '');
-  return `${defi.type}-${date}-${heure}`.toLowerCase();
+  const type = slugSalon(defi.type || 'match', 'match');
+  const date = formatDateSalon(defi.date);
+
+  if (defi.type === 'free') {
+    return tronquerNomSalon(`${type}-${date}-${formatHeureSalon(defi.heure)}`);
+  }
+
+  const monEquipe = slugSalon(getNomRole(guild, defi.monEquipeId, 'equipe1'), 'equipe1');
+  const adversaire = slugSalon(getNomRole(guild, defi.adversaireId, 'equipe2'), 'equipe2');
+  return tronquerNomSalon(`${type}-${monEquipe}-vs-${adversaire}-${date}`);
 }
 
 function construireBoutonAnnulationMatch(defi) {
@@ -125,19 +152,10 @@ function construireBoutonAnnulationMatch(defi) {
 
 /** Génère un nom de salon basé sur la session */
 function genererNomSalonSession(session) {
-  const date = session.date.replace(/\//g, '-');
-
-  return `${session.type}-${date}`
-    .toLowerCase()
-    .replace(/\s+/g, '-')
-    .replace(/[éèê]/g, 'e')
-    .replace(/[àâ]/g, 'a')
-    .replace(/[ùû]/g, 'u')
-    .replace(/[îï]/g, 'i')
-    .replace(/[ôö]/g, 'o')
-    .replace(/[ç]/g, 'c');
-
-    }
+  const type = slugSalon(session.type || 'session', 'session');
+  const date = formatDateSalon(session.date);
+  return tronquerNomSalon(`${type}-${date}-${formatHeureSalon(session.heure)}`);
+}
 // ========================================
 // 🚀 Démarrage du bot
 // ========================================
