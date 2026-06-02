@@ -286,10 +286,7 @@ function isStale(key, ttlMs = CACHE_TTL_MS) {
 function hasUsableCache() {
   if (!fs.existsSync(DB_FILE)) return false;
   try {
-    const db = openDb();
-    const teams = db.prepare('SELECT COUNT(*) AS count FROM eva_v2_teams').get().count;
-    const rankings = db.prepare('SELECT COUNT(*) AS count FROM eva_v2_rankings').get().count;
-    return Number(teams || 0) > 0 && Number(rankings || 0) > 0;
+    return isEvaV2CacheReady();
   } catch {
     return false;
   }
@@ -1801,6 +1798,16 @@ function getEvaV2Status() {
   };
 }
 
+function isEvaV2CacheReady(status = null) {
+  const snapshot = status || getEvaV2Status();
+  return Boolean(
+    snapshot.rankings > 0 &&
+    snapshot.teams > 0 &&
+    snapshot.rankingItems > 0 &&
+    snapshot.players > 0
+  );
+}
+
 function resetEvaV2Cache({ clearLegacy = false } = {}) {
   const db = openDb();
   db.exec(`
@@ -1839,6 +1846,7 @@ module.exports = {
   getEvaRuntimeStatus,
   getEvaCommandUnavailableReason,
   getEvaV2Status,
+  isEvaV2CacheReady,
   resetEvaV2Cache,
   refreshMajorPlayerStats,
   fetchCount,

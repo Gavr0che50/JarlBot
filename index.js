@@ -39,6 +39,7 @@ const {
   searchLocations,
   searchTournamentSites,
   getEvaCommandUnavailableReason,
+  isEvaV2CacheReady,
   estimateRefreshETA,
 } = require('./utils/eva-v2');
 
@@ -184,8 +185,12 @@ async function handleReady() {
   try {
     const dbPath = path.join(__dirname, 'eva-cache.db');
     const dbExists = fs.existsSync(dbPath);
+    const cacheReady = dbExists && isEvaV2CacheReady();
 
-    if (!dbExists) {
+    if (!cacheReady) {
+      if (dbExists) {
+        console.log('🧪 eva-cache.db trouvé mais cache EVA vide/incomplet — import initial forcé.');
+      }
       const eta = await estimateRefreshETA({ full: true }).catch(() => ({ estimatedMs: 0, estimatedRequests: 0 }));
       if (eta && eta.estimatedMs > 0) {
         console.log(`⏳ Import initial EVA v2 estimé ~ ${Math.round(eta.estimatedMs / 60000)} min (${eta.estimatedRequests} requêtes)`);
@@ -208,7 +213,7 @@ async function handleReady() {
       const duration = Date.now() - start;
       console.log(`Cache EVA v2 pret (${status.teams} equipes, ${status.players} joueurs indexes) — terminé en ${Math.round(duration/1000)}s.`);
     } else {
-      console.log('🗄️ eva-cache.db trouvé — aucun refresh EVA au démarrage. Prochain refresh différentiel dans le cycle périodique.');
+      console.log('🗄️ eva-cache.db trouvé et cache EVA exploitable — aucun refresh EVA au démarrage. Prochain refresh différentiel dans le cycle périodique.');
     }
   } catch (err) {
     console.error('Impossible de precharger le cache EVA v2 :', err);
