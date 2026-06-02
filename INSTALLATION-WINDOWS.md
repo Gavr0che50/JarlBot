@@ -149,7 +149,7 @@ Repasse en `JARLBOT_MODE=prod` avant l'usage réel.
 10. Teste `/free`, `/session`, `/planning` et une commande EVA comme `/stat`.
 11. Repasse en `JARLBOT_MODE=prod`.
 
-Au premier lancement sans `eva-cache.db`, l'import EVA initial peut prendre du temps.
+Au premier lancement sans `eva-cache.db`, l'import EVA initial prend environ 10 minutes.
 
 ## 10. Cache EVA
 

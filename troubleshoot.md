@@ -35,7 +35,7 @@ JARLBOT_MODE=prod
 | Salon privé non créé | Mauvais `CATEGORIE_DEFIS_ID` ou permissions catégorie | Recopie l'ID de la catégorie et vérifie `Manage Channels`. |
 | Les votes ne comptent pas | Rôles d'équipe absents ou mauvais rôle sélectionné | Vérifie que les joueurs possèdent les rôles attendus. |
 | Le launcher ne s'ouvre pas | Port occupé ou ouverture navigateur désactivée | Change `JARLBOT_LAUNCHER_PORT` ou ouvre l'URL manuellement. |
-| Les commandes EVA répondent que le cache se met à jour | Import EVA en cours | Attends la fin du refresh ou lance `npm run eva-refresh`. |
+| Les commandes EVA répondent que le cache se met à jour | Import EVA en cours | Attends la fin du refresh. L'import initial prend environ 10 minutes, ou lance `npm run eva-refresh`. |
 
 ## Logs
 
