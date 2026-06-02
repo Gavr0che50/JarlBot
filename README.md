@@ -1,4 +1,4 @@
-# 🤖 JarlBot V1.7.4
+# 🤖 JarlBot V1.7.4 - BUG ACTUELLEMENT SUR L'API - REVENIR PLUS TARD
 
 Bot Discord open source pour gérer des **défis d'équipes**, des **sessions spéciales** et des **statistiques EVA**.
 
