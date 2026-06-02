@@ -43,6 +43,20 @@ Après l'invitation, monte le rôle du bot assez haut dans **Paramètres du serv
 
 ## 4. Installer sur le poste
 
+### Depuis le dossier Release
+
+1. Télécharge la dernière release (`v1.7.5` actuellement) -> Source-code.zip
+2. Depuis ton dossier "Téléchargements", extrait l'archive ou tu le souhaites (`C:/Jarlbot` par exemple)
+3. Double-clique sur `JarlBot Launcher.cmd`.
+4. Renseigne :
+   - `DISCORD_TOKEN`
+   - `CLIENT_ID`
+   - `GUILD_ID`
+   - `CATEGORIE_DEFIS_ID`
+5. Clique sur **Sauvegarder et lancer**. 
+
+Le launcher installe les dépendances, écrit `.env`, enregistre les slash commands et lance le bot.
+
 ### Depuis une archive portable
 
 1. Décompresse le dossier `JarlBot-portable-...`.
@@ -55,7 +69,7 @@ Après l'invitation, monte le rôle du bot assez haut dans **Paramètres du serv
    - `CATEGORIE_DEFIS_ID`
 5. Clique sur **Sauvegarder et lancer**.
 
-Le launcher installe les dépendances si besoin, écrit `.env`, enregistre les slash commands et lance le bot.
+
 
 ### Depuis le dépôt
 
