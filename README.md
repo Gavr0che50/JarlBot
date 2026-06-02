@@ -29,6 +29,8 @@ Création automatique de **salons privés**, **événements Discord**, **rappels
   - 1h avant → message dans le salon privé
 - Nettoyage automatique du salon 48h après le match
 
+**TOUT LES TIMINGS SONT MODIFIABLES DANS LE CONFIG.JS**
+
 ### 🎮 Sessions spéciales
 - **`/session`** — Propose une session (Nocturne, Matinale, Événement) avec descriptif obligatoire
 - Inscription via boutons **Je participe / Quitter**
@@ -231,7 +233,7 @@ Le fichier `.env` reste pour les secrets, les IDs propres à un environnement, e
 | `EVA_PLANNING_WINDOW_DAYS` | Fenêtre temporelle affichée par `/planning` |
 | `EVA_COMPETITIVE_API_BASE_URL` | URL de base de l'API EVA Competitive |
 | `EVA_GRAPHQL_URL` | Endpoint GraphQL public utilisé par app.eva.gg |
-| `EVA_LOCAL_LEAGUES_CIRCUIT_ID` | Circuit Local Leagues EVA utilisé pour découvrir les tournois JARL |
+| `EVA_LOCAL_LEAGUES_CIRCUIT_ID` | Circuit Local Leagues EVA utilisé pour découvrir les tournois locaux |
 | `JARLBOT_LAUNCHER_PORT` | Port HTTP local de l'interface graphique, `3050` par défaut |
 | `JARLBOT_LAUNCHER_NO_OPEN` | Mettre `1` pour ne pas ouvrir automatiquement le navigateur |
 | `EVA_MAJOR_TOURNAMENT_IDS` | IDs des tournois major league utilisés par `/top` et `/top-equipe` |
