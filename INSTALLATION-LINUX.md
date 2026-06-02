@@ -104,7 +104,10 @@ Les details sont dans [INSTALLATION-WINDOWS.md](INSTALLATION-WINDOWS.md), sectio
 3. Dans Discord, teste `/ping`.
 4. Cree un `/mix` dans 3 a 5 minutes, puis reagis avec ✅.
 5. Verifie le salon prive, l'evenement Discord, les rappels et le bouton d'annulation.
-6. Repasse en mode `prod`.
+6. Teste `/stat`, `/top`, `/classement` et `/tournoi site:`.
+7. Repasse en mode `prod`.
+
+Au premier lancement sans `eva-cache.db`, JarlBot cree et peuple la base EVA. Pendant cet import, les commandes EVA indiquent qu'une mise a jour est en cours. Si `eva-cache.db` existe deja, aucun refresh n'est lance au demarrage; le refresh differentiel tourne ensuite toutes les 12h.
 
 ## 8. Commandes utiles
 

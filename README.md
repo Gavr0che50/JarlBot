@@ -1,4 +1,4 @@
-# 🤖 JarlBot V1.7.4 - BUG ACTUELLEMENT SUR L'API - REVENIR PLUS TARD
+# 🤖 JarlBot V1.7.5
 
 Bot Discord open source pour gérer des **défis d'équipes**, des **sessions spéciales** et des **statistiques EVA**.
 
@@ -45,6 +45,7 @@ Création automatique de **salons privés**, **événements Discord**, **rappels
 - **`/classement`** — Afficher les classements locaux d'une ville/salle EVA, par ranking et équipes triées par points
 - **`/top`** — Afficher le top joueurs EVA basé sur la major league, avec KDA et tendance
 - **`/top-equipe`** — Afficher le top équipes EVA basé sur la major league, avec points, bilan et différentiel
+- **`/tournoi`** — Afficher les prochains tournois locaux EVA d'un site, avec division et ordre des rencontres publiées
 - **`/planning`** — Lister les événements Discord à venir
 - **`/ping`** — Vérifier que le bot répond
 
@@ -126,13 +127,16 @@ npm install
 ```
 
 Le bot utilise la base SQLite integree a Node.js, donc il n'y a pas de package SQLite natif a compiler.
-Le moteur EVA v2 stocke les donnees utiles dans `eva-cache.db`:
+Le moteur EVA v3 stocke les donnees utiles dans `eva-cache.db`:
 - rankings et equipes de `competitive.eva.gg/api`;
 - rosters des equipes via `/teams/{teamId}/members`;
 - joueurs major league et stats publiques via GraphQL `api.eva.gg/graphql`;
+- tournois locaux EVA et rencontres publiees via `competitive.eva.gg/api`;
 - resume local par equipe pour repondre vite aux commandes slash.
 
-Les commandes lisent SQLite d'abord. Si une donnee manque ou depasse 24h, le moteur EVA v2 rafraichit les donnees utiles depuis le bot. Le script `npm run eva-refresh` reste disponible pour precharger ou reconstruire la base manuellement, mais il n'y a plus de worker public separe.
+Les commandes `/stat`, `/stat-equipe`, `/classement`, `/top`, `/top-equipe` et `/tournoi` lisent uniquement SQLite pour rester rapides. Au demarrage, si `eva-cache.db` existe deja, le bot ne lance aucun refresh EVA. Si la base n'existe pas, il la cree et la peuple. Le refresh differentiel tourne ensuite toutes les 12h. Pendant un import ou un refresh, les commandes EVA repondent immediatement qu'une mise a jour est en cours.
+
+Les profils prives ou introuvables sont marques avec un delai de retry: le bot les reverifie aux refreshs suivants sans boucler dessus en continu.
 
 ### 3. Configurer les variables d'environnement
 
@@ -148,14 +152,14 @@ EVA_COMPETITIVE_API_BASE_URL=https://competitive.eva.gg/api
 EVA_GRAPHQL_URL=https://api.eva.gg/graphql
 EVA_LOCAL_LEAGUES_CIRCUIT_ID=2395738311350114303
 EVA_MAJOR_TOURNAMENT_IDS=2385727403616917503
-EVA_V2_CACHE_TTL_MS=86400000
+EVA_V2_CACHE_TTL_MS=43200000
 EVA_V2_MIN_INTERVAL_MS=120
 EVA_V2_HTTP_TIMEOUT_MS=10000
 EVA_V2_TEAM_MEMBER_REFRESH_LIMIT=250
 EVA_V2_TEAM_MEMBER_FULL_REFRESH_LIMIT=2000
 EVA_V2_MAJOR_PLAYER_REFRESH_LIMIT=20
 EVA_V2_MAJOR_PLAYER_FULL_REFRESH_LIMIT=100
-EVA_V2_COMMAND_PLAYER_HYDRATE_LIMIT=3
+EVA_V2_TOURNAMENT_MATCH_REFRESH_LIMIT=40
 ```
 
 > ⚠️ **Ne partage JAMAIS ton token Discord.** S'il fuite, va dans le portail développeur et clique sur **Reset Token**.
@@ -180,13 +184,13 @@ npm start
 npm run eva-refresh
 ```
 
-Cette commande appelle le moteur EVA v2 et remplit `eva-cache.db` sans démarrer Discord. Le bot fait aussi ce refresh au démarrage puis périodiquement. Pour repartir d'une base EVA propre:
+Cette commande appelle le moteur EVA v3 et remplit `eva-cache.db` sans démarrer Discord. Le bot fait l'import initial seulement si la base n'existe pas, puis un refresh differentiel toutes les 12h. Pour repartir d'une base EVA propre:
 
 ```bash
 npm run eva-refresh:reset
 ```
 
-Cette commande vide les tables EVA v2 et le cache local, puis reconstruit les rankings, equipes, rosters et joueurs major league.
+Cette commande vide les tables EVA v3 et le cache local, puis reconstruit les rankings, equipes, rosters, joueurs major league, tournois locaux et matchs publies.
 
 ### Exporter une version portable
 
@@ -206,7 +210,7 @@ L'export cree un dossier `dist/JarlBot-portable-...` avec:
 
 L'export ne copie pas ton `.env` pour eviter de fuiter le token Discord. L'utilisateur final le remplit depuis le launcher.
 
-Le moteur EVA v2 respecte les contraintes observees de l'API Competitive: ranges de 50 elements maximum, derniere page bornee au total exact, cadence configurable et timeout par appel.
+Le moteur EVA v3 respecte les contraintes observees de l'API Competitive: ranges de 50 elements maximum, derniere page bornee au total exact, cadence configurable et timeout par appel.
 
 ---
 
@@ -237,14 +241,14 @@ Le fichier `.env` reste pour les secrets, les IDs propres à un environnement, e
 | `JARLBOT_LAUNCHER_PORT` | Port HTTP local de l'interface graphique, `3050` par défaut |
 | `JARLBOT_LAUNCHER_NO_OPEN` | Mettre `1` pour ne pas ouvrir automatiquement le navigateur |
 | `EVA_MAJOR_TOURNAMENT_IDS` | IDs des tournois major league utilisés par `/top` et `/top-equipe` |
-| `EVA_V2_CACHE_TTL_MS` | Durée de fraîcheur du cache EVA v2, 24h par défaut |
-| `EVA_V2_MIN_INTERVAL_MS` | Pause minimale entre deux appels EVA v2 |
-| `EVA_V2_HTTP_TIMEOUT_MS` | Timeout d'un appel EVA v2 |
+| `EVA_V2_CACHE_TTL_MS` | Intervalle du refresh EVA, 12h par défaut |
+| `EVA_V2_MIN_INTERVAL_MS` | Pause minimale entre deux appels EVA |
+| `EVA_V2_HTTP_TIMEOUT_MS` | Timeout d'un appel EVA |
 | `EVA_V2_TEAM_MEMBER_REFRESH_LIMIT` | Nombre de rosters rafraîchis par cycle standard |
 | `EVA_V2_TEAM_MEMBER_FULL_REFRESH_LIMIT` | Nombre de rosters rafraîchis par cycle `--full` |
 | `EVA_V2_MAJOR_PLAYER_REFRESH_LIMIT` | Nombre de joueurs major hydratés par cycle standard |
 | `EVA_V2_MAJOR_PLAYER_FULL_REFRESH_LIMIT` | Nombre de joueurs major hydratés par cycle `--full` |
-| `EVA_V2_COMMAND_PLAYER_HYDRATE_LIMIT` | Nombre max de joueurs hydratés en direct si `/top` manque de données |
+| `EVA_V2_TOURNAMENT_MATCH_REFRESH_LIMIT` | Nombre max de tournois locaux dont les matchs sont rafraîchis par cycle |
 | `MESSAGES.*` | Tous les textes du bot (personnalisables) |
 
 ---
@@ -267,9 +271,9 @@ JarlBot/
 ├── scripts/
 │   ├── launcher.js         ← Interface graphique locale d'administration
 │   ├── export-portable.js  ← Génère un dossier portable avec la DB
-│   └── eva-refresh.js      ← Préchargement / reset manuel du moteur EVA v2
+│   └── eva-refresh.js      ← Préchargement / reset manuel du moteur EVA v3
 └── utils/
-    └── eva-v2.js           ← Moteur EVA v2 rapide et différentiel
+    └── eva-v2.js           ← Moteur EVA v3 rapide et différentiel
 ```
 
 ---
@@ -338,7 +342,7 @@ MIT — logiciel open source, libre d'utilisation, modification et redistributio
 
 - Les données de défis et sessions sont stockées dans `bot-state.db`
 - Le cache EVA persistant est dans `eva-cache.db` ; si tu déplaces le bot sur un autre PC, copie aussi ce fichier pour garder l'historique local
-- Les commandes EVA utilisent un mode hybride: lecture locale d'abord, refresh intégré au moteur si la donnée est absente ou plus vieille que 24h
+- Les commandes EVA lisent le cache local uniquement. Si un import ou refresh est en cours, elles préviennent l'utilisateur et restent rapides.
 - Le cache joueurs ne contient pas tous les comptes EVA, mais les joueurs compétitifs dont le profil public a pu être résolu
 - Les constantes que tu veux ajuster à la main doivent rester dans `config.js`, pas éparpillées dans le code
 - Les tâches programmées (rappels, nettoyage) sont **persistantes** : si le bot redémarre, elles sont reprogrammées au boot

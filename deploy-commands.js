@@ -1,5 +1,5 @@
 // ========================================
-// 📡 DEPLOY COMMANDS — JarlBot V1.7.4
+// 📡 DEPLOY COMMANDS — JarlBot V1.7.5
 // Enregistre les commandes slash sur ton serveur Discord
 // Lance avec : node deploy-commands.js
 // ========================================
@@ -191,6 +191,16 @@ const commands = [
   new SlashCommandBuilder()
     .setName('top-equipe')
     .setDescription('Affiche le top des equipes EVA depuis la major league'),
+
+  new SlashCommandBuilder()
+    .setName('tournoi')
+    .setDescription('Affiche les prochains tournois locaux EVA d’un site')
+    .addStringOption(option =>
+      option.setName('site')
+        .setDescription('Site ou ville EVA')
+        .setRequired(true)
+        .setAutocomplete(true)
+    ),
 
   new SlashCommandBuilder()
     .setName('planning')

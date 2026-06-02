@@ -1,4 +1,5 @@
 const path = require('path');
+const fs = require('fs');
 const config = require('../config');
 
 let DatabaseSync = null;
@@ -20,12 +21,20 @@ const TEAM_MEMBER_REFRESH_LIMIT = Number(process.env.EVA_V2_TEAM_MEMBER_REFRESH_
 const TEAM_MEMBER_FULL_REFRESH_LIMIT = Number(process.env.EVA_V2_TEAM_MEMBER_FULL_REFRESH_LIMIT || config.EVA_V2_TEAM_MEMBER_FULL_REFRESH_LIMIT || 2000);
 const MAJOR_PLAYER_REFRESH_LIMIT = Number(process.env.EVA_V2_MAJOR_PLAYER_REFRESH_LIMIT || config.EVA_V2_MAJOR_PLAYER_REFRESH_LIMIT || 20);
 const MAJOR_PLAYER_FULL_REFRESH_LIMIT = Number(process.env.EVA_V2_MAJOR_PLAYER_FULL_REFRESH_LIMIT || config.EVA_V2_MAJOR_PLAYER_FULL_REFRESH_LIMIT || 100);
-const COMMAND_PLAYER_HYDRATE_LIMIT = Number(process.env.EVA_V2_COMMAND_PLAYER_HYDRATE_LIMIT || config.EVA_V2_COMMAND_PLAYER_HYDRATE_LIMIT || 3);
 const TOP_LIMIT = Number(process.env.EVA_TOP_PLAYERS_LIMIT || config.EVA_TOP_PLAYERS_LIMIT || 10);
+const TOURNAMENT_MATCH_REFRESH_LIMIT = Number(process.env.EVA_V2_TOURNAMENT_MATCH_REFRESH_LIMIT || config.EVA_V2_TOURNAMENT_MATCH_REFRESH_LIMIT || 40);
 
 let dbInstance = null;
 let lastHttpAt = 0;
 let refreshPromise = null;
+let activeSeasonCache = null;
+let refreshState = {
+  active: false,
+  kind: null,
+  startedAt: null,
+  lastCompletedAt: null,
+  lastError: null,
+};
 
 function parseList(value) {
   return String(value || '')
@@ -70,6 +79,10 @@ function openDb() {
   const db = new DatabaseSync(DB_FILE);
   db.exec(`
     PRAGMA journal_mode = WAL;
+    PRAGMA synchronous = NORMAL;
+    PRAGMA cache_size = -64000;
+    PRAGMA temp_store = MEMORY;
+    PRAGMA mmap_size = 30000000;
     PRAGMA busy_timeout = 5000;
 
     CREATE TABLE IF NOT EXISTS eva_v2_meta (
@@ -159,6 +172,9 @@ function openDb() {
       current_stats TEXT,
       previous_stats TEXT,
       all_stats TEXT,
+      stats_error TEXT,
+      stats_error_at INTEGER NOT NULL DEFAULT 0,
+      stats_retry_after INTEGER NOT NULL DEFAULT 0,
       stats_refreshed_at INTEGER NOT NULL DEFAULT 0,
       player_refreshed_at INTEGER NOT NULL DEFAULT 0,
       refreshed_at INTEGER NOT NULL
@@ -177,6 +193,44 @@ function openDb() {
       refreshed_at INTEGER NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS eva_v2_tournaments (
+      tournament_id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      full_name TEXT,
+      status TEXT,
+      scheduled_start TEXT,
+      scheduled_end TEXT,
+      timezone TEXT,
+      organization TEXT,
+      location TEXT,
+      circuit_id TEXT,
+      circuit_name TEXT,
+      season_name TEXT,
+      region_name TEXT,
+      tier_name TEXT,
+      search_key TEXT NOT NULL,
+      refreshed_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS eva_v2_tournament_matches (
+      match_id TEXT PRIMARY KEY,
+      tournament_id TEXT NOT NULL,
+      status TEXT,
+      scheduled_datetime TEXT,
+      played_at TEXT,
+      round_number INTEGER,
+      round_name TEXT,
+      group_number INTEGER,
+      group_name TEXT,
+      match_number INTEGER,
+      stage_name TEXT,
+      opponent1 TEXT,
+      opponent2 TEXT,
+      score1 REAL,
+      score2 REAL,
+      refreshed_at INTEGER NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_eva_v2_locations_search ON eva_v2_locations(search_key);
     CREATE INDEX IF NOT EXISTS idx_eva_v2_rankings_search ON eva_v2_rankings(search_key);
     CREATE INDEX IF NOT EXISTS idx_eva_v2_teams_search ON eva_v2_teams(search_key);
@@ -184,10 +238,29 @@ function openDb() {
     CREATE INDEX IF NOT EXISTS idx_eva_v2_players_search ON eva_v2_players(search_key);
     CREATE INDEX IF NOT EXISTS idx_eva_v2_players_username ON eva_v2_players(eva_username);
     CREATE INDEX IF NOT EXISTS idx_eva_v2_players_team ON eva_v2_players(team_id);
+    CREATE INDEX IF NOT EXISTS idx_eva_v2_tournaments_search ON eva_v2_tournaments(search_key);
+    CREATE INDEX IF NOT EXISTS idx_eva_v2_tournaments_start ON eva_v2_tournaments(scheduled_start);
+    CREATE INDEX IF NOT EXISTS idx_eva_v2_tournament_matches_tournament ON eva_v2_tournament_matches(tournament_id, scheduled_datetime, match_number);
   `);
+  migrateDb(db);
   dbInstance = db;
   return db;
 }
+
+function migrateDb(db) {
+  const addColumn = (table, name, definition) => {
+    const columns = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map(column => column.name));
+    if (!columns.has(name)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${definition}`);
+  };
+
+  addColumn('eva_v2_players', 'stats_error', 'TEXT');
+  addColumn('eva_v2_players', 'stats_error_at', 'INTEGER NOT NULL DEFAULT 0');
+  addColumn('eva_v2_players', 'stats_retry_after', 'INTEGER NOT NULL DEFAULT 0');
+  addColumn('eva_v2_tournament_matches', 'group_number', 'INTEGER');
+  addColumn('eva_v2_tournament_matches', 'group_name', 'TEXT');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_eva_v2_players_retry ON eva_v2_players(is_major, stats_retry_after, stats_refreshed_at)');
+}
+
 
 function setMeta(key, value) {
   const db = openDb();
@@ -208,6 +281,45 @@ function getMeta(key, fallback = null) {
 function isStale(key, ttlMs = CACHE_TTL_MS) {
   const row = openDb().prepare('SELECT updated_at FROM eva_v2_meta WHERE key = ?').get(key);
   return !row || now() - Number(row.updated_at || 0) > ttlMs;
+}
+
+function hasUsableCache() {
+  if (!fs.existsSync(DB_FILE)) return false;
+  try {
+    const db = openDb();
+    const teams = db.prepare('SELECT COUNT(*) AS count FROM eva_v2_teams').get().count;
+    const rankings = db.prepare('SELECT COUNT(*) AS count FROM eva_v2_rankings').get().count;
+    return Number(teams || 0) > 0 && Number(rankings || 0) > 0;
+  } catch {
+    return false;
+  }
+}
+
+function getEvaRuntimeStatus() {
+  return {
+    dbFile: DB_FILE,
+    dbExists: fs.existsSync(DB_FILE),
+    cacheReady: hasUsableCache(),
+    active: Boolean(refreshPromise),
+    kind: refreshState.kind,
+    startedAt: refreshState.startedAt,
+    lastCompletedAt: refreshState.lastCompletedAt,
+    lastError: refreshState.lastError,
+  };
+}
+
+function getEvaCommandUnavailableReason() {
+  const status = getEvaRuntimeStatus();
+  if (status.active) {
+    if (status.kind === 'initial') {
+      return 'Import initial EVA en cours. La base est en train d\'etre creee, reessaie dans quelques minutes.';
+    }
+    return 'Mise a jour EVA en cours. Les commandes stats sont verrouillees quelques minutes pour garder des reponses rapides.';
+  }
+  if (!status.cacheReady) {
+    return 'Base EVA pas encore prete. Lance l\'import initial puis reessaie dans quelques minutes.';
+  }
+  return null;
 }
 
 async function throttleHttp() {
@@ -400,6 +512,9 @@ function trendFromPoints(currentPoints, previousPoints) {
 }
 
 async function getActiveSeason() {
+  if (activeSeasonCache && now() - activeSeasonCache.cachedAt < CACHE_TTL_MS) {
+    return activeSeasonCache.value;
+  }
   const data = await graphql(`
     query SeasonActive {
       seasonActive {
@@ -409,7 +524,11 @@ async function getActiveSeason() {
       }
     }
   `, {});
-  return data.seasonActive || null;
+  activeSeasonCache = {
+    value: data.seasonActive || null,
+    cachedAt: now(),
+  };
+  return activeSeasonCache.value;
 }
 
 async function refreshLocations(progressCallback = null) {
@@ -531,6 +650,7 @@ async function refreshRankingsAndTeams(progressCallback = null) {
       teamStmt.run(team.id, team.name || '', normalizeKey(team.name), Number(team.memberCount || 0), stamp);
       tcount += 1;
       if (progressCallback && tcount % 50 === 0) progressCallback({ step: 'teams', status: 'progress', current: tcount, total: filteredTeams.length });
+      if (tcount % 20 === 0) await wait(0);
     }
     if (progressCallback) progressCallback({ step: 'teams', status: 'done', current: tcount, total: filteredTeams.length });
 
@@ -552,6 +672,7 @@ async function refreshRankingsAndTeams(progressCallback = null) {
       );
       rcount += 1;
       if (progressCallback && rcount % 20 === 0) progressCallback({ step: 'rankings', status: 'progress', current: rcount, total: localRankings.length });
+      if (rcount % 10 === 0) await wait(0);
     }
     if (progressCallback) progressCallback({ step: 'rankings', status: 'done', current: rcount, total: localRankings.length });
 
@@ -592,7 +713,8 @@ async function refreshRankingsAndTeams(progressCallback = null) {
       }
       db.exec('COMMIT');
       processed += 1;
-      if (progressCallback && processed % 5 === 0) progressCallback({ step: 'ranking_items', status: 'progress', current: processed, total: localRankings.length });
+        if (progressCallback && processed % 5 === 0) progressCallback({ step: 'ranking_items', status: 'progress', current: processed, total: localRankings.length });
+        if (processed % 5 === 0) await wait(0);
     } catch (err) {
       db.exec('ROLLBACK');
       if (progressCallback) progressCallback({ step: 'ranking_items', status: 'error', error: err.message });
@@ -698,6 +820,8 @@ async function refreshTeamRoster(teamId, teamName = null) {
     db.exec('ROLLBACK');
     throw err;
   }
+  // yield to event loop after a team roster write so other tasks (interactions) can be processed
+  await wait(0);
   return members || [];
 }
 
@@ -723,6 +847,8 @@ async function refreshStaleRosters({ full = false } = {}, progressCallback = nul
     });
     refreshed += 1;
     if (progressCallback && refreshed % 10 === 0) progressCallback({ step: 'rosters', status: 'progress', current: refreshed, total: rows.length });
+    // Yield periodically to avoid blocking the event loop for long periods
+    if (refreshed % 5 === 0) await wait(0);
   }
   if (progressCallback) progressCallback({ step: 'rosters', status: 'done', current: refreshed, total: rows.length });
   return refreshed;
@@ -801,6 +927,36 @@ async function fetchPublicPlayerStats(username, seasonId, previousSeasonId) {
   return data.getPublicPlayerByUsername || null;
 }
 
+function getStatsRetryDelayMs(err) {
+  const message = String(err?.message || '').toLowerCase();
+  if (
+    message.includes('private') ||
+    message.includes('introuvable') ||
+    message.includes('not found') ||
+    message.includes('identifiant eva public est absent')
+  ) {
+    return CACHE_TTL_MS;
+  }
+  return Math.min(CACHE_TTL_MS, 60 * 60 * 1000);
+}
+
+function recordPlayerStatsError(player, err) {
+  const db = openDb();
+  const stamp = now();
+  db.prepare(`
+    UPDATE eva_v2_players
+    SET stats_error = ?,
+        stats_error_at = ?,
+        stats_retry_after = ?
+    WHERE player_user_id = ?
+  `).run(
+    String(err?.message || err || 'Erreur stats EVA'),
+    stamp,
+    stamp + getStatsRetryDelayMs(err),
+    player.player_user_id
+  );
+}
+
 async function hydratePlayerStats(player) {
   const db = openDb();
   let evaUsername = player.eva_username || null;
@@ -836,6 +992,9 @@ async function hydratePlayerStats(player) {
         current_stats = ?,
         previous_stats = ?,
         all_stats = ?,
+        stats_error = NULL,
+        stats_error_at = 0,
+        stats_retry_after = 0,
         stats_refreshed_at = ?,
         player_refreshed_at = ?
     WHERE player_user_id = ?
@@ -881,63 +1040,106 @@ function scoreMatch(query, row, fields) {
 }
 
 function findBestPlayer(query) {
-  const rows = openDb().prepare(`
-    SELECT p.*, t.current_region_name, t.current_ranking_name, t.current_rank, t.current_position,
-           t.current_points, t.current_season_name, t.trend_label AS team_trend
-    FROM eva_v2_players p
-    LEFT JOIN eva_v2_teams t ON t.team_id = p.team_id
-  `).all();
-  let best = null;
-  let bestScore = 0;
-  for (const row of rows) {
-    const score = scoreMatch(query, row, ['name', 'display_name', 'eva_username']);
-    if (score > bestScore) {
-      best = row;
-      bestScore = score;
+  try {
+    // Cherche d'abord les candidats pertinents (limit 500)
+    const candidates = openDb().prepare(`
+      SELECT p.*, t.current_region_name, t.current_ranking_name, t.current_rank, t.current_position,
+             t.current_points, t.current_season_name, t.trend_label AS team_trend
+      FROM eva_v2_players p
+      LEFT JOIN eva_v2_teams t ON t.team_id = p.team_id
+      WHERE p.search_key LIKE ? OR p.eva_username LIKE ?
+      LIMIT 500
+    `).all(`%${normalizeKey(query)}%`, `%${query}%`);
+    
+    let best = null;
+    let bestScore = 0;
+    for (const row of candidates) {
+      const score = scoreMatch(query, row, ['name', 'display_name', 'eva_username']);
+      if (score > bestScore) {
+        best = row;
+        bestScore = score;
+      }
     }
+    return bestScore >= 70 ? best : null;
+  } catch (err) {
+    console.error('findBestPlayer error:', err.message);
+    return null;
   }
-  return bestScore >= 70 ? best : null;
 }
 
 function findBestTeam(query) {
-  const rows = openDb().prepare('SELECT * FROM eva_v2_teams').all();
-  let best = null;
-  let bestScore = 0;
-  for (const row of rows) {
-    const score = scoreMatch(query, row, ['name']);
-    if (score > bestScore) {
-      best = row;
-      bestScore = score;
+  try {
+    // Cherche d'abord les candidats pertinents (limit 500)
+    const candidates = openDb().prepare(`
+      SELECT * FROM eva_v2_teams
+      WHERE search_key LIKE ?
+      LIMIT 500
+    `).all(`%${normalizeKey(query)}%`);
+    
+    let best = null;
+    let bestScore = 0;
+    for (const row of candidates) {
+      const score = scoreMatch(query, row, ['name']);
+      if (score > bestScore) {
+        best = row;
+        bestScore = score;
+      }
     }
+    return bestScore >= 70 ? best : null;
+  } catch (err) {
+    console.error('findBestTeam error:', err.message);
+    return null;
   }
-  return bestScore >= 70 ? best : null;
 }
 
 function findBestLocation(query) {
-  const rows = openDb().prepare(`
-    SELECT * FROM eva_v2_locations
-    UNION ALL
-    SELECT NULL AS location_id, NULL AS identifier, region_name AS name, NULL AS country,
-           search_key, MAX(refreshed_at) AS refreshed_at
-    FROM eva_v2_rankings
-    GROUP BY region_name
-  `).all();
-  let best = null;
-  let bestScore = 0;
-  for (const row of rows) {
-    const score = scoreMatch(query, row, ['name', 'identifier']);
-    if (score > bestScore) {
-      best = row;
-      bestScore = score;
+  try {
+    const db = openDb();
+    const rows = db.prepare(`
+      SELECT * FROM eva_v2_locations
+      WHERE search_key LIKE ? OR name LIKE ?
+      LIMIT 500
+    `).all(`%${normalizeKey(query)}%`, `%${query}%`);
+
+    const rankingRows = db.prepare(`
+      SELECT NULL AS location_id, NULL AS identifier, region_name AS name, NULL AS country,
+             search_key, MAX(refreshed_at) AS refreshed_at
+      FROM eva_v2_rankings
+      WHERE search_key LIKE ?
+      GROUP BY region_name
+      LIMIT 500
+    `).all(`%${normalizeKey(query)}%`);
+    rows.push(...rankingRows);
+    
+    let best = null;
+    let bestScore = 0;
+    for (const row of rows) {
+      const score = scoreMatch(query, row, ['name', 'identifier']);
+      if (score > bestScore) {
+        best = row;
+        bestScore = score;
+      }
     }
+    return bestScore >= 70 ? best : null;
+  } catch (err) {
+    console.error('findBestLocation error:', err.message);
+    return null;
   }
-  return bestScore >= 70 ? best : null;
 }
 
-async function ensureEvaV2Fresh({ force = false, full = false, progressCallback = null } = {}) {
+async function ensureEvaV2Fresh({ force = false, full = false, progressCallback = null, kind = 'manual' } = {}) {
   if (refreshPromise) return refreshPromise;
   refreshPromise = (async () => {
-    if (force || isStale('core_refresh')) {
+    refreshState = {
+      ...refreshState,
+      active: true,
+      kind,
+      startedAt: now(),
+      lastError: null,
+    };
+    // N'exécute l'import core (lourd) uniquement si `force` est vrai.
+    // Ainsi les appels normaux (force: false) feront seulement les rafraîchissements différentiels.
+    if (force && isStale('core_refresh')) {
       await refreshLocations(progressCallback).catch(err => {
         console.warn(`[EVA-V2] locations skipped: ${err.message}`);
         if (progressCallback) progressCallback({ step: 'locations', status: 'error', error: err.message });
@@ -950,12 +1152,41 @@ async function ensureEvaV2Fresh({ force = false, full = false, progressCallback 
         console.warn(`[EVA-V2] major league skipped: ${err.message}`);
         if (progressCallback) progressCallback({ step: 'major_league', status: 'error', error: err.message });
       });
+      await refreshLocalTournaments(progressCallback).catch(err => {
+        console.warn(`[EVA-V2] local tournaments skipped: ${err.message}`);
+        if (progressCallback) progressCallback({ step: 'local_tournaments', status: 'error', error: err.message });
+      });
       setMeta('core_refresh', '1');
+    } else if (force && isStale('local_tournaments_refresh')) {
+      await refreshLocalTournaments(progressCallback).catch(err => {
+        console.warn(`[EVA-V2] local tournaments skipped: ${err.message}`);
+        if (progressCallback) progressCallback({ step: 'local_tournaments', status: 'error', error: err.message });
+      });
     }
     await refreshStaleRosters({ full }, progressCallback);
     await refreshMajorPlayerStats({ full });
     return getEvaV2Status();
-  })().finally(() => {
+  })()
+    .then(status => {
+      refreshState = {
+        ...refreshState,
+        active: false,
+        kind: null,
+        lastCompletedAt: now(),
+        lastError: null,
+      };
+      return status;
+    })
+    .catch(err => {
+      refreshState = {
+        ...refreshState,
+        active: false,
+        kind: null,
+        lastError: String(err?.message || err),
+      };
+      throw err;
+    })
+    .finally(() => {
     refreshPromise = null;
   });
   return refreshPromise;
@@ -1004,6 +1235,7 @@ async function refreshMajorLeague(progressCallback = null) {
         playerStmt.run(String(playerId), member.name, normalizeKey(member.name), teamId, teamName || null, stamp);
       }
       if (progressCallback && pcount % 20 === 0) progressCallback({ step: 'major_league', status: 'participants_progress', current: pcount, tournamentId });
+      if (pcount % 10 === 0) await wait(0);
     }
 
     const matches = await fetchRange(`/matches?${new URLSearchParams({ tournament_ids: tournamentId }).toString()}`, 'matches', 100);
@@ -1032,6 +1264,7 @@ async function refreshMajorLeague(progressCallback = null) {
         }
       }
       if (progressCallback && mcount % 50 === 0) progressCallback({ step: 'major_league', status: 'matches_progress', current: mcount, tournamentId });
+      if (mcount % 20 === 0) await wait(0);
     }
     if (progressCallback) progressCallback({ step: 'major_league', status: 'tournament_done', current: tournamentCount, tournamentId });
   }
@@ -1069,35 +1302,231 @@ async function refreshMajorLeague(progressCallback = null) {
   }
 }
 
+function getTournamentSearchKey(tournament) {
+  return normalizeKey([
+    tournament.name,
+    tournament.fullName,
+    tournament.organization?.name || tournament.organization,
+    tournament.location?.name || tournament.location,
+    tournament.circuit?.name,
+    tournament.circuitSeason?.name,
+    tournament.circuitRegion?.name,
+    tournament.circuitTier?.name,
+  ].filter(Boolean).join(' '));
+}
+
+function isLocalEvaTournament(tournament) {
+  return tournament.discipline === 'after_humanity' &&
+    (!LOCAL_LEAGUES_CIRCUIT_ID || tournament.circuit?.id === LOCAL_LEAGUES_CIRCUIT_ID) &&
+    tournament.public !== false;
+}
+
+function isUpcomingOrActiveTournament(tournament, referenceDate = new Date()) {
+  const status = String(tournament.status || '').toLowerCase();
+  if (['cancelled', 'canceled', 'archived'].includes(status)) return false;
+  if (!['completed', 'ended', 'finished'].includes(status)) return true;
+
+  const end = Date.parse(tournament.scheduledDateEnd || tournament.scheduledDateStart || '');
+  if (!Number.isFinite(end)) return false;
+  return end >= referenceDate.getTime() - (7 * 24 * 60 * 60 * 1000);
+}
+
+function getOpponentLabel(opponent) {
+  return opponent?.participant?.name ||
+    opponent?.participant?.team?.name ||
+    opponent?.team?.name ||
+    opponent?.name ||
+    'A definir';
+}
+
+async function refreshLocalTournaments(progressCallback = null) {
+  if (progressCallback) progressCallback({ step: 'local_tournaments', status: 'start' });
+  const db = openDb();
+  const tournaments = (await fetchRange('/tournaments', 'tournaments', 100))
+    .filter(isLocalEvaTournament);
+  const stamp = now();
+
+  const tournamentStmt = db.prepare(`
+    INSERT INTO eva_v2_tournaments (
+      tournament_id, name, full_name, status, scheduled_start, scheduled_end, timezone,
+      organization, location, circuit_id, circuit_name, season_name, region_name, tier_name,
+      search_key, refreshed_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(tournament_id) DO UPDATE SET
+      name = excluded.name,
+      full_name = excluded.full_name,
+      status = excluded.status,
+      scheduled_start = excluded.scheduled_start,
+      scheduled_end = excluded.scheduled_end,
+      timezone = excluded.timezone,
+      organization = excluded.organization,
+      location = excluded.location,
+      circuit_id = excluded.circuit_id,
+      circuit_name = excluded.circuit_name,
+      season_name = excluded.season_name,
+      region_name = excluded.region_name,
+      tier_name = excluded.tier_name,
+      search_key = excluded.search_key,
+      refreshed_at = excluded.refreshed_at
+  `);
+
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    let count = 0;
+    for (const tournament of tournaments) {
+      tournamentStmt.run(
+        String(tournament.id),
+        tournament.name || tournament.fullName || 'Tournoi EVA',
+        tournament.fullName || null,
+        tournament.status || null,
+        tournament.scheduledDateStart || null,
+        tournament.scheduledDateEnd || null,
+        tournament.timezone || null,
+        tournament.organization?.name || tournament.organization || null,
+        tournament.location?.name || tournament.location || null,
+        tournament.circuit?.id || null,
+        tournament.circuit?.name || null,
+        tournament.circuitSeason?.name || null,
+        tournament.circuitRegion?.name || null,
+        tournament.circuitTier?.name || null,
+        getTournamentSearchKey(tournament),
+        stamp
+      );
+      count += 1;
+      if (progressCallback && count % 25 === 0) progressCallback({ step: 'local_tournaments', status: 'progress', current: count, total: tournaments.length });
+    }
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+
+  const tournamentsWithMatches = tournaments
+    .filter(tournament => isUpcomingOrActiveTournament(tournament))
+    .sort((a, b) => String(a.scheduledDateStart || '').localeCompare(String(b.scheduledDateStart || '')))
+    .slice(0, TOURNAMENT_MATCH_REFRESH_LIMIT);
+
+  const matchStmt = db.prepare(`
+    INSERT INTO eva_v2_tournament_matches (
+      match_id, tournament_id, status, scheduled_datetime, played_at, round_number,
+      round_name, group_number, group_name, match_number, stage_name, opponent1, opponent2,
+      score1, score2, refreshed_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(match_id) DO UPDATE SET
+      tournament_id = excluded.tournament_id,
+      status = excluded.status,
+      scheduled_datetime = excluded.scheduled_datetime,
+      played_at = excluded.played_at,
+      round_number = excluded.round_number,
+      round_name = excluded.round_name,
+      group_number = excluded.group_number,
+      group_name = excluded.group_name,
+      match_number = excluded.match_number,
+      stage_name = excluded.stage_name,
+      opponent1 = excluded.opponent1,
+      opponent2 = excluded.opponent2,
+      score1 = excluded.score1,
+      score2 = excluded.score2,
+      refreshed_at = excluded.refreshed_at
+  `);
+
+  let matchTournamentCount = 0;
+  for (const tournament of tournamentsWithMatches) {
+    const params = new URLSearchParams({ tournament_ids: String(tournament.id) });
+    const matches = await fetchRange(`/matches?${params.toString()}`, 'matches', 100).catch(err => {
+      console.warn(`[EVA-V2] local tournament matches ${tournament.name} skipped: ${err.message}`);
+      return [];
+    });
+
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      for (const match of matches || []) {
+        const opponents = match.opponents || [];
+        const first = opponents[0] || {};
+        const second = opponents[1] || {};
+        matchStmt.run(
+          String(match.id),
+          String(tournament.id),
+          match.status || null,
+          match.scheduledDatetime || null,
+          match.playedAt || null,
+          Number(match.round?.number || match.roundNumber || 0) || null,
+          match.round?.name || null,
+          Number(match.group?.number || 0) || null,
+          match.group?.name || null,
+          Number(match.number || 0) || null,
+          match.stage?.name || null,
+          getOpponentLabel(first),
+          getOpponentLabel(second),
+          first.score != null ? Number(first.score) : null,
+          second.score != null ? Number(second.score) : null,
+          stamp
+        );
+      }
+      db.exec('COMMIT');
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
+    }
+
+    matchTournamentCount += 1;
+    if (progressCallback && matchTournamentCount % 5 === 0) {
+      progressCallback({ step: 'local_tournament_matches', status: 'progress', current: matchTournamentCount, total: tournamentsWithMatches.length });
+    }
+    if (matchTournamentCount % 3 === 0) await wait(0);
+  }
+
+  setMeta('local_tournaments_refresh', '1');
+  if (progressCallback) {
+    progressCallback({ step: 'local_tournaments', status: 'done', current: tournaments.length, total: tournaments.length });
+  }
+  return tournaments.length;
+}
+
 async function refreshMajorPlayerStats({ full = false, limit = null } = {}) {
   const db = openDb();
   const resolvedLimit = Number(limit || (full ? MAJOR_PLAYER_FULL_REFRESH_LIMIT : MAJOR_PLAYER_REFRESH_LIMIT));
+  const stamp = now();
   const players = db.prepare(`
     SELECT *
     FROM eva_v2_players
     WHERE is_major = 1
+      AND (stats_retry_after IS NULL OR stats_retry_after = 0 OR stats_retry_after <= ?)
     ORDER BY stats_refreshed_at ASC
     LIMIT ?
-  `).all(resolvedLimit);
+  `).all(stamp, resolvedLimit);
   let hydrated = 0;
+  let attempted = 0;
+  const errors = new Map();
   for (const player of players) {
     if (player.current_stats && now() - Number(player.stats_refreshed_at || 0) <= CACHE_TTL_MS) continue;
+    attempted += 1;
     try {
       await hydratePlayerStats(player);
       hydrated += 1;
     } catch (err) {
-      console.warn(`[EVA-V2] major player ${player.name} skipped: ${err.message}`);
+      recordPlayerStatsError(player, err);
+      const key = String(err?.message || err || 'Erreur stats EVA');
+      errors.set(key, (errors.get(key) || 0) + 1);
     }
+    if (attempted % 5 === 0) await wait(0);
+  }
+  for (const [message, count] of errors.entries()) {
+    console.warn(`[EVA-V2] major players skipped: ${count} x ${message}`);
   }
   return hydrated;
 }
 
 async function getEvaPlayerStats(query) {
-  await ensureEvaV2Fresh();
   let player = findBestPlayer(query);
   if (!player) throw new Error(`Joueur EVA introuvable dans l'index local: ${query}`);
-  if (!player.current_stats || now() - Number(player.stats_refreshed_at || 0) > CACHE_TTL_MS) {
-    player = await hydratePlayerStats(player);
+  if (!player.current_stats) {
+    if (player.stats_error && Number(player.stats_retry_after || 0) > now()) {
+      throw new Error(player.stats_error);
+    }
+    throw new Error('Stats EVA pas encore disponibles dans le cache. Reessaie apres le prochain refresh.');
   }
 
   const current = safeJsonParse(player.current_stats, {});
@@ -1122,150 +1551,239 @@ async function getEvaPlayerStats(query) {
 
 function getTeamPlayerStats(teamId) {
   if (!teamId) return [];
-  const rows = openDb().prepare(`
-    SELECT player_user_id, name, eva_username, current_stats
-    FROM eva_v2_players
-    WHERE team_id = ? AND current_stats IS NOT NULL
-  `).all(teamId);
+  try {
+    const rows = openDb().prepare(`
+      SELECT player_user_id, name, eva_username, current_stats
+      FROM eva_v2_players
+      WHERE team_id = ? AND current_stats IS NOT NULL
+    `).all(teamId);
 
-  return rows
-    .map(player => ({
-      playerId: player.player_user_id,
-      name: player.name,
-      eva_username: player.eva_username,
-      current: safeJsonParse(player.current_stats, {}),
-    }))
-    .filter(player => player.current && Number(player.current.gameCount || 0) > 0);
+    return rows
+      .map(player => ({
+        playerId: player.player_user_id,
+        name: player.name,
+        eva_username: player.eva_username,
+        current: safeJsonParse(player.current_stats, {}),
+      }))
+      .filter(player => player.current && Number(player.current.gameCount || 0) > 0);
+  } catch (err) {
+    console.error('getTeamPlayerStats error:', err.message);
+    return [];
+  }
 }
 
 async function getEvaTeamStats(query) {
-  await ensureEvaV2Fresh();
   const team = findBestTeam(query);
   if (!team) throw new Error(`Equipe EVA introuvable dans l'index local: ${query}`);
-  if (!team.roster_refreshed_at || now() - Number(team.roster_refreshed_at || 0) > CACHE_TTL_MS) {
-    await refreshTeamRoster(team.team_id, team.name);
+  try {
+    const roster = openDb().prepare(`
+      SELECT name, eva_username
+      FROM eva_v2_players
+      WHERE team_id = ?
+      ORDER BY name COLLATE NOCASE
+    `).all(team.team_id);
+    return {
+      ...team,
+      roster,
+    };
+  } catch (err) {
+    console.error('getEvaTeamStats error:', err.message);
+    throw err;
   }
-  const roster = openDb().prepare(`
-    SELECT name, eva_username
-    FROM eva_v2_players
-    WHERE team_id = ?
-    ORDER BY name COLLATE NOCASE
-  `).all(team.team_id);
-  return {
-    ...team,
-    roster,
-  };
 }
 
 async function getEvaCityStandings(query) {
-  await ensureEvaV2Fresh();
-  const location = findBestLocation(query);
-  if (!location) throw new Error(`Ville ou salle EVA introuvable dans l'index local: ${query}`);
-  const normalized = normalizeKey(location.name);
-  const rankings = openDb().prepare(`
-    SELECT *
-    FROM eva_v2_rankings
-    WHERE search_key LIKE ?
-    ORDER BY season_name DESC, ranking_name
-  `).all(`%${normalized}%`);
-  const rankingIds = rankings.map(ranking => ranking.ranking_id);
-  if (!rankingIds.length) return { locationName: location.name, rankings: [] };
+  try {
+    const location = findBestLocation(query);
+    if (!location) throw new Error(`Ville ou salle EVA introuvable dans l'index local: ${query}`);
+    const normalized = normalizeKey(location.name);
+    const rankings = openDb().prepare(`
+      SELECT *
+      FROM eva_v2_rankings
+      WHERE search_key LIKE ?
+      ORDER BY season_name DESC, ranking_name
+      LIMIT 100
+    `).all(`%${normalized}%`);
+    const rankingIds = rankings.map(ranking => ranking.ranking_id);
+    if (!rankingIds.length) return { locationName: location.name, rankings: [] };
 
-  const placeholders = rankingIds.map(() => '?').join(',');
-  const items = openDb().prepare(`
-    SELECT ri.*, r.ranking_name
-    FROM eva_v2_ranking_items ri
-    JOIN eva_v2_rankings r ON r.ranking_id = ri.ranking_id
-    WHERE ri.ranking_id IN (${placeholders})
-    ORDER BY r.season_name DESC, ri.points DESC, ri.rank ASC, ri.team_name COLLATE NOCASE
-  `).all(...rankingIds);
+    const placeholders = rankingIds.map(() => '?').join(',');
+    const items = openDb().prepare(`
+      SELECT ri.*, r.ranking_name
+      FROM eva_v2_ranking_items ri
+      JOIN eva_v2_rankings r ON r.ranking_id = ri.ranking_id
+      WHERE ri.ranking_id IN (${placeholders})
+      ORDER BY r.season_name DESC, ri.points DESC, ri.rank ASC, ri.team_name COLLATE NOCASE
+      LIMIT 1000
+    `).all(...rankingIds);
 
-  return {
-    locationName: location.name,
-    rankings: rankings.map(ranking => ({
-      ...ranking,
-      teams: items.filter(item => item.ranking_id === ranking.ranking_id),
-    })),
-  };
+    return {
+      locationName: location.name,
+      rankings: rankings.map(ranking => ({
+        ...ranking,
+        teams: items.filter(item => item.ranking_id === ranking.ranking_id),
+      })),
+    };
+  } catch (err) {
+    console.error('getEvaCityStandings error:', err.message);
+    throw err;
+  }
 }
 
 async function getEvaTopPlayers(limit = TOP_LIMIT) {
-  await ensureEvaV2Fresh();
-  const db = openDb();
-  const available = db.prepare(`
-    SELECT COUNT(*) AS count
-    FROM eva_v2_players
-    WHERE is_major = 1 AND current_stats IS NOT NULL
-  `).get().count;
+  try {
+    const db = openDb();
+    const players = db.prepare(`
+      SELECT *
+      FROM eva_v2_players
+      WHERE is_major = 1 AND current_stats IS NOT NULL
+      LIMIT ?
+    `).all(limit * 3);
 
-  if (available < limit && COMMAND_PLAYER_HYDRATE_LIMIT > 0) {
-    await refreshMajorPlayerStats({ limit: COMMAND_PLAYER_HYDRATE_LIMIT });
+    return players
+      .map(player => {
+        const current = safeJsonParse(player.current_stats, {});
+        const previous = safeJsonParse(player.previous_stats, {});
+        return {
+          name: player.display_name || splitUsernameBase(player.eva_username) || player.name,
+          username: player.eva_username,
+          teamName: player.team_name,
+          kda: current.kda || 0,
+          gameCount: current.gameCount || 0,
+          trend: trendFromStats(current, previous),
+        };
+      })
+      .filter(player => player.gameCount > 0)
+      .sort((a, b) => b.kda - a.kda || b.gameCount - a.gameCount)
+      .slice(0, limit);
+  } catch (err) {
+    console.error('getEvaTopPlayers error:', err.message);
+    return [];
   }
-
-  const players = db.prepare(`
-    SELECT *
-    FROM eva_v2_players
-    WHERE is_major = 1 AND current_stats IS NOT NULL
-  `).all();
-
-  return players
-    .map(player => {
-      const current = safeJsonParse(player.current_stats, {});
-      const previous = safeJsonParse(player.previous_stats, {});
-      return {
-        name: player.display_name || splitUsernameBase(player.eva_username) || player.name,
-        username: player.eva_username,
-        teamName: player.team_name,
-        kda: current.kda || 0,
-        gameCount: current.gameCount || 0,
-        trend: trendFromStats(current, previous),
-      };
-    })
-    .filter(player => player.gameCount > 0)
-    .sort((a, b) => b.kda - a.kda || b.gameCount - a.gameCount)
-    .slice(0, limit);
 }
 
 async function getEvaTopTeams(limit = TOP_LIMIT) {
-  await ensureEvaV2Fresh();
-  return openDb().prepare(`
-    SELECT m.*, t.trend_label
-    FROM eva_v2_major_team_stats m
-    LEFT JOIN eva_v2_teams t ON t.team_id = m.team_id
-    ORDER BY m.points DESC, (m.score_for - m.score_against) DESC, m.wins DESC, m.team_name COLLATE NOCASE
-    LIMIT ?
-  `).all(limit);
+  try {
+    return openDb().prepare(`
+      SELECT m.*, t.trend_label
+      FROM eva_v2_major_team_stats m
+      LEFT JOIN eva_v2_teams t ON t.team_id = m.team_id
+      ORDER BY m.points DESC, (m.score_for - m.score_against) DESC, m.wins DESC, m.team_name COLLATE NOCASE
+      LIMIT ?
+    `).all(limit);
+  } catch (err) {
+    console.error('getEvaTopTeams error:', err.message);
+    return [];
+  }
+}
+
+function safeSearch(fn, maxRetries = 1) {
+  let lastErr;
+  for (let i = 0; i <= maxRetries; i++) {
+    try {
+      return fn();
+    } catch (err) {
+      lastErr = err;
+      if (i < maxRetries && err.message?.includes('database is locked')) {
+        // Retry immédiatement sur verrouillage (WAL mode permet les reads rapides)
+        const delay = 10;
+        const start = Date.now();
+        while (Date.now() - start < delay) {}
+      } else {
+        break;
+      }
+    }
+  }
+  // Retourne vide plutôt que de crasher
+  return [];
 }
 
 function searchPlayers(query, limit = 25) {
-  const rows = openDb().prepare(`
+  return safeSearch(() => openDb().prepare(`
     SELECT name, eva_username, team_name
     FROM eva_v2_players
     WHERE search_key LIKE ? OR eva_username LIKE ?
     ORDER BY is_major DESC, name COLLATE NOCASE
     LIMIT ?
-  `).all(`%${normalizeKey(query)}%`, `%${query}%`, limit);
-  return rows;
+  `).all(`%${normalizeKey(query)}%`, `%${query}%`, limit));
 }
 
 function searchTeams(query, limit = 25) {
-  return openDb().prepare(`
+  return safeSearch(() => openDb().prepare(`
     SELECT name, current_region_name
     FROM eva_v2_teams
     WHERE search_key LIKE ?
     ORDER BY current_points DESC, name COLLATE NOCASE
     LIMIT ?
-  `).all(`%${normalizeKey(query)}%`, limit);
+  `).all(`%${normalizeKey(query)}%`, limit));
 }
 
 function searchLocations(query, limit = 25) {
-  return openDb().prepare(`
+  return safeSearch(() => openDb().prepare(`
     SELECT DISTINCT region_name AS name, ranking_name
     FROM eva_v2_rankings
     WHERE search_key LIKE ?
     ORDER BY region_name COLLATE NOCASE
     LIMIT ?
-  `).all(`%${normalizeKey(query)}%`, limit);
+  `).all(`%${normalizeKey(query)}%`, limit));
+}
+
+function searchTournamentSites(query, limit = 25) {
+  return safeSearch(() => {
+    const normalized = normalizeKey(query);
+    const rows = openDb().prepare(`
+      SELECT
+        region_name AS name,
+        tier_name,
+        MAX(season_name) AS season_name,
+        MAX(scheduled_start) AS latest_start
+      FROM eva_v2_tournaments
+      WHERE search_key LIKE ?
+        AND region_name IS NOT NULL
+      GROUP BY region_name, tier_name
+      ORDER BY region_name COLLATE NOCASE, latest_start DESC
+      LIMIT ?
+    `).all(`%${normalized}%`, limit);
+
+    if (rows.length) return rows;
+    return searchLocations(query, limit).map(row => ({
+      name: row.name,
+      tier_name: row.ranking_name,
+      season_name: null,
+    }));
+  });
+}
+
+function getEvaTournamentsForSite(query, limit = 6) {
+  const normalized = normalizeKey(query);
+  const db = openDb();
+  const tournaments = db.prepare(`
+    SELECT *
+    FROM eva_v2_tournaments
+    WHERE search_key LIKE ?
+      AND (scheduled_end IS NULL OR scheduled_end >= date('now', '-1 day'))
+      AND LOWER(COALESCE(status, '')) NOT IN ('cancelled', 'canceled', 'archived')
+    ORDER BY COALESCE(scheduled_start, scheduled_end, '') ASC, name COLLATE NOCASE
+    LIMIT ?
+  `).all(`%${normalized}%`, Number(limit || 6));
+
+  const matchStmt = db.prepare(`
+    SELECT *
+    FROM eva_v2_tournament_matches
+    WHERE tournament_id = ?
+    ORDER BY
+      COALESCE(scheduled_datetime, played_at, '') ASC,
+      COALESCE(group_number, 9999) ASC,
+      COALESCE(round_number, 9999) ASC,
+      COALESCE(match_number, 9999) ASC,
+      match_id ASC
+    LIMIT 30
+  `);
+
+  return tournaments.map(tournament => ({
+    ...tournament,
+    matches: matchStmt.all(tournament.tournament_id),
+  }));
 }
 
 function getEvaV2Status() {
@@ -1278,6 +1796,8 @@ function getEvaV2Status() {
     rankingItems: getCount('eva_v2_ranking_items'),
     players: getCount('eva_v2_players'),
     majorTeams: getCount('eva_v2_major_team_stats'),
+    tournaments: getCount('eva_v2_tournaments'),
+    tournamentMatches: getCount('eva_v2_tournament_matches'),
   };
 }
 
@@ -1291,6 +1811,8 @@ function resetEvaV2Cache({ clearLegacy = false } = {}) {
     DELETE FROM eva_v2_ranking_items;
     DELETE FROM eva_v2_players;
     DELETE FROM eva_v2_major_team_stats;
+    DELETE FROM eva_v2_tournaments;
+    DELETE FROM eva_v2_tournament_matches;
   `);
   if (clearLegacy) {
     db.exec(`
@@ -1309,9 +1831,13 @@ module.exports = {
   getEvaCityStandings,
   getEvaTopPlayers,
   getEvaTopTeams,
+  getEvaTournamentsForSite,
   searchPlayers,
   searchTeams,
   searchLocations,
+  searchTournamentSites,
+  getEvaRuntimeStatus,
+  getEvaCommandUnavailableReason,
   getEvaV2Status,
   resetEvaV2Cache,
   refreshMajorPlayerStats,

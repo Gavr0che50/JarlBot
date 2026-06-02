@@ -250,13 +250,13 @@ Le bot cherche un message supprimé.
 2. Pour repartir propre, supprime `bot-state.db` puis relance le bot pour reconstruire la base
 
 ### `EVA GraphQL error 429`
-Le moteur EVA intégré ou une commande live a trop sollicité l'API.
+Le moteur EVA intégré a trop sollicité l'API pendant un import ou un refresh.
 
 **Solutions :**
 1. Attends la fin du backoff automatique
 2. Augmente `EVA_V2_MIN_INTERVAL_MS`
 3. Baisse `EVA_V2_TEAM_MEMBER_REFRESH_LIMIT`
-4. Laisse le cache local servir les commandes si les données ont moins de 24h
+4. Laisse le cache local servir les commandes. Les commandes EVA ne déclenchent plus de refresh en direct.
 
 ---
 
@@ -264,7 +264,7 @@ Le moteur EVA intégré ou une commande live a trop sollicité l'API.
 L'API Competitive refuse un `Range` trop large ou au-dela du nombre total de resultats.
 
 **Solutions :**
-1. Verifie que tu utilises bien le moteur EVA v2 actuel
+1. Verifie que tu utilises bien le moteur EVA v3 actuel
 2. Garde des pages de 50 elements maximum
 3. Relance `npm run eva-refresh`
 4. Si le probleme revient apres modification du code, verifier `fetchRange()` dans `utils/eva-v2.js`
@@ -278,7 +278,7 @@ Deux processus ecrivent dans `eva-cache.db` en meme temps.
 1. Coupe les anciens processus `node index.js` ou un ancien `node scripts/eva-refresh.js --daemon` resté ouvert
 2. Lance un seul refresh manuel a la fois
 3. Relance `npm run eva-refresh:reset` si le cache est incoherent
-4. Le moteur v2 utilise WAL + `busy_timeout`, mais il ne faut pas multiplier les processus qui ecrivent dans la base
+4. Le moteur EVA utilise WAL + `busy_timeout`, mais il ne faut pas multiplier les processus qui ecrivent dans la base
 
 ---
 
@@ -294,23 +294,34 @@ La commande `/stat` n'a pas trouvé de correspondance assez proche pour le pseud
 
 ---
 
-### `/top` est lent au premier appel
-La commande hydrate quelques joueurs major league si le cache manque de stats publiques.
+### `/top`, `/stat` ou `/classement` indique qu'une mise à jour EVA est en cours
+Un import initial ou un refresh EVA est en train d'ecrire dans `eva-cache.db`.
 
 **Solutions :**
-1. Lance `npm run eva-refresh:reset` pour prehydrater les joueurs major
-2. Augmente `EVA_V2_MAJOR_PLAYER_FULL_REFRESH_LIMIT` si le top manque de joueurs
-3. Baisse `EVA_V2_COMMAND_PLAYER_HYDRATE_LIMIT` si tu veux zero attente en commande
+1. Attends quelques minutes et relance la commande.
+2. Si c'est le premier lancement sur un poste neuf, laisse l'import initial se terminer.
+3. Si la base existe deja, verifie qu'un seul bot tourne et qu'il ne lance pas un ancien refresh manuel.
+4. Les profils prives/introuvables seront retestes aux refreshs suivants sans boucle continue.
 
 ---
 
-### `Unhandled 'error' event` + crash complet
-Une erreur non gérée fait planter Node.js.
+### `/tournoi` affiche deux fois le même site
+L'autocompletion peut afficher un doublon si le bot tourne encore avec une ancienne version chargee en memoire.
 
 **Solutions :**
-1. Lis le message d'erreur juste au-dessus dans le terminal
-2. Identifie la ligne indiquée (ex: `index.js:668`)
-3. Signale l'erreur pour qu'elle soit entourée d'un `try/catch`
+1. Redemarre le bot depuis le launcher.
+2. Verifie que les slash commands ont ete redeployees.
+3. Retape le site: une seule suggestion par couple `site + niveau` doit rester visible.
+
+---
+
+### `Unknown interaction` ou `Unhandled 'error' event` + crash complet
+Discord a expire une interaction trop ancienne ou deja invalide. Depuis JarlBot 1.7.5, le routeur attend toutes les promesses et logue les erreurs client au lieu de couper Node.js.
+
+**Solutions :**
+1. Redemarre le bot pour charger la version 1.7.5 ou plus recente.
+2. Verifie que les commandes EVA repondent vite depuis le cache.
+3. Si l'erreur revient, lis `logs/bot.err.log` et note la premiere pile d'erreur avant `Unknown interaction`.
 
 ---
 
@@ -394,4 +405,4 @@ C'est volontaire. L'export ne copie pas `.env` pour eviter une fuite du token Di
 
 ---
 
-*JarlBot V1.7.4 — Document mis à jour le 02/06/2026*
+*JarlBot V1.7.5 — Document mis à jour le 02/06/2026*

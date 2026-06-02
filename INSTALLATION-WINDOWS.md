@@ -102,7 +102,13 @@ Le fichier `.env` n'est jamais copié dans l'export portable. C'est volontaire :
 5. Réagis avec ⏰ dans le salon privé pour tester le rappel MP.
 6. Crée un second `/mix`, réagis avec ❌, puis vérifie que le défi est refusé.
 7. Teste `/free` et `/session` : une seule inscription doit suffire en mode test.
-8. 5 minutes après le premier démarrage, teste les commandes `/top` `/stat` etc. La BDD a besoin de refresh et les données ne sont pas disponibles avant ce délai. Il faut attendre cette ligne dans les logs bots : Cache EVA v2 pret (922 equipes, 3933 joueurs indexes) — terminé en 225s.
+8. Teste `/stat`, `/top`, `/classement` et `/tournoi site:`. Au premier lancement sans base EVA, attends la fin de l'import initial ou vérifie que le bot répond qu'une mise à jour est en cours et qu'il faut réessayer dans quelques minutes.
 9. Repasse en `JARLBOT_MODE=prod` avant l'utilisation réelle.
 
 Si le salon n'est pas créé, vérifie en priorité `CATEGORIE_DEFIS_ID`, la position du rôle du bot et les permissions **Manage Channels** / **View Channels**.
+
+## 8. Fonctionnement du cache EVA
+
+Au premier lancement sur un poste sans `eva-cache.db`, JarlBot crée la base EVA et la peuple. Pendant cette étape, les commandes `/stat`, `/stat-equipe`, `/classement`, `/top`, `/top-equipe` et `/tournoi` répondent immédiatement qu'une mise à jour est en cours.
+
+Si `eva-cache.db` existe déjà, JarlBot ne lance aucun refresh au démarrage. Les commandes lisent le cache local pour rester rapides. Un refresh différentiel tourne ensuite toutes les 12h.

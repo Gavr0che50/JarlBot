@@ -1,5 +1,5 @@
 // ========================================
-// 🔧 CONFIGURATION DU BOT — JarlBot V1.7.4
+// 🔧 CONFIGURATION DU BOT — JarlBot V1.7.5
 // Réglages métier et valeurs par défaut non sensibles.
 // ========================================
 
@@ -82,14 +82,14 @@ module.exports = {
     'https://api.eva.gg/graphql',
   EVA_LOCAL_LEAGUES_CIRCUIT_ID: process.env.EVA_LOCAL_LEAGUES_CIRCUIT_ID || '2395738311350114303',
   EVA_MAJOR_TOURNAMENT_IDS: process.env.EVA_MAJOR_TOURNAMENT_IDS || '2385727403616917503',
-  EVA_V2_CACHE_TTL_MS: Number(process.env.EVA_V2_CACHE_TTL_MS || 24 * HOUR),
+  EVA_V2_CACHE_TTL_MS: Number(process.env.EVA_V2_CACHE_TTL_MS || 12 * HOUR),
   EVA_V2_MIN_INTERVAL_MS: Number(process.env.EVA_V2_MIN_INTERVAL_MS || 120),
   EVA_V2_HTTP_TIMEOUT_MS: Number(process.env.EVA_V2_HTTP_TIMEOUT_MS || 10000),
   EVA_V2_TEAM_MEMBER_REFRESH_LIMIT: Number(process.env.EVA_V2_TEAM_MEMBER_REFRESH_LIMIT || 250),
   EVA_V2_TEAM_MEMBER_FULL_REFRESH_LIMIT: Number(process.env.EVA_V2_TEAM_MEMBER_FULL_REFRESH_LIMIT || 2000),
   EVA_V2_MAJOR_PLAYER_REFRESH_LIMIT: Number(process.env.EVA_V2_MAJOR_PLAYER_REFRESH_LIMIT || 20),
   EVA_V2_MAJOR_PLAYER_FULL_REFRESH_LIMIT: Number(process.env.EVA_V2_MAJOR_PLAYER_FULL_REFRESH_LIMIT || 100),
-  EVA_V2_COMMAND_PLAYER_HYDRATE_LIMIT: Number(process.env.EVA_V2_COMMAND_PLAYER_HYDRATE_LIMIT || 3),
+  EVA_V2_TOURNAMENT_MATCH_REFRESH_LIMIT: Number(process.env.EVA_V2_TOURNAMENT_MATCH_REFRESH_LIMIT || 40),
 
 
   // ========================================

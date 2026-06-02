@@ -22,7 +22,7 @@ async function runRefresh(cycle) {
     `teams=${before.teams} players=${before.players} majorTeams=${before.majorTeams}`
   );
 
-  await ensureEvaV2Fresh({ force: true, full: isFull });
+  await ensureEvaV2Fresh({ force: true, full: isFull, kind: 'manual' });
   const status = getEvaV2Status();
   const duration = Date.now() - startedAt;
   log(

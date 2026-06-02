@@ -1,5 +1,5 @@
 // ========================================
-// 🤖 JarlBot — V1.7.4
+// 🤖 JarlBot — V1.7.5
 // Bot de gestion de défis d'équipes + sessions
 // ========================================
 
@@ -17,6 +17,8 @@ const {
   ButtonBuilder,
   ButtonStyle,
 } = require('discord.js');
+const fs = require('fs');
+const path = require('path');
 const schedule = require('node-schedule');
 const config = require('./config');
 const {
@@ -31,9 +33,12 @@ const {
   getEvaCityStandings,
   getEvaTopPlayers,
   getEvaTopTeams,
+  getEvaTournamentsForSite,
   searchPlayers,
   searchTeams,
   searchLocations,
+  searchTournamentSites,
+  getEvaCommandUnavailableReason,
   estimateRefreshETA,
 } = require('./utils/eva-v2');
 
@@ -51,8 +56,19 @@ const client = new Client({
   partials: [Partials.Message, Partials.Channel, Partials.Reaction],
 });
 
+process.on('unhandledRejection', err => {
+  console.error('❌ Promesse non gérée :', err);
+});
+
+process.on('uncaughtException', err => {
+  console.error('❌ Exception non interceptée :', err);
+});
+
+client.on('error', err => {
+  console.error('❌ Erreur client Discord :', err);
+});
+
 const confirmationsAnnulationMatch = new Map();
-let evaAutocompleteWarmupPromise = null;
 
 // ========================================
 // 🛠️ Utilitaires généraux
@@ -166,27 +182,34 @@ async function handleReady() {
   reprogrammerTaches();
 
   try {
-    const eta = await estimateRefreshETA({ full: true }).catch(() => ({ estimatedMs: 0, estimatedRequests: 0 }));
-    if (eta && eta.estimatedMs > 0) {
-      console.log(`⏳ Import initial EVA v2 estimé ~ ${Math.round(eta.estimatedMs / 60000)} min (${eta.estimatedRequests} requêtes)`);
-    } else {
-      console.log('⏳ Import initial EVA v2 : estimation non disponible.');
-    }
+    const dbPath = path.join(__dirname, 'eva-cache.db');
+    const dbExists = fs.existsSync(dbPath);
 
-    const start = Date.now();
-    const progressCallback = (ev) => {
-      try {
-        const elapsed = Date.now() - start;
-        const pct = ev.current && ev.total ? Math.round((ev.current / ev.total) * 100) : null;
-        const pctStr = pct != null ? ` ${pct}%` : '';
-        const counts = (ev.current || '') + (ev.total ? `/${ev.total}` : '');
-        const extra = ev.error ? ` — error: ${ev.error}` : '';
-        console.log(`🔁 [EVA] ${ev.step} ${ev.status}${pctStr} — ${counts}${extra}`);
-      } catch (e) {}
-    };
-    const status = await ensureEvaV2Fresh({ force: true, progressCallback });
-    const duration = Date.now() - start;
-    console.log(`Cache EVA v2 pret (${status.teams} equipes, ${status.players} joueurs indexes) — terminé en ${Math.round(duration/1000)}s.`);
+    if (!dbExists) {
+      const eta = await estimateRefreshETA({ full: true }).catch(() => ({ estimatedMs: 0, estimatedRequests: 0 }));
+      if (eta && eta.estimatedMs > 0) {
+        console.log(`⏳ Import initial EVA v2 estimé ~ ${Math.round(eta.estimatedMs / 60000)} min (${eta.estimatedRequests} requêtes)`);
+      } else {
+        console.log('⏳ Import initial EVA v2 : estimation non disponible.');
+      }
+
+      const start = Date.now();
+      const progressCallback = (ev) => {
+        try {
+          const elapsed = Date.now() - start;
+          const pct = ev.current && ev.total ? Math.round((ev.current / ev.total) * 100) : null;
+          const pctStr = pct != null ? ` ${pct}%` : '';
+          const counts = (ev.current || '') + (ev.total ? `/${ev.total}` : '');
+          const extra = ev.error ? ` — error: ${ev.error}` : '';
+          console.log(`🔁 [EVA] ${ev.step} ${ev.status}${pctStr} — ${counts}${extra}`);
+        } catch (e) {}
+      };
+      const status = await ensureEvaV2Fresh({ force: true, full: true, kind: 'initial', progressCallback });
+      const duration = Date.now() - start;
+      console.log(`Cache EVA v2 pret (${status.teams} equipes, ${status.players} joueurs indexes) — terminé en ${Math.round(duration/1000)}s.`);
+    } else {
+      console.log('🗄️ eva-cache.db trouvé — aucun refresh EVA au démarrage. Prochain refresh différentiel dans le cycle périodique.');
+    }
   } catch (err) {
     console.error('Impossible de precharger le cache EVA v2 :', err);
   }
@@ -194,7 +217,7 @@ async function handleReady() {
   demarrerRefreshEvaV2Periodique();
 }
 
-client.once('ready', handleReady);
+client.once('clientReady', handleReady);
 
 function demarrerRefreshEvaV2Periodique() {
   const intervalMs = Number(config.EVA_V2_CACHE_TTL_MS || 24 * 60 * 60 * 1000);
@@ -216,7 +239,7 @@ function demarrerRefreshEvaV2Periodique() {
             console.log(`🔁 [EVA][periodic] ${ev.step} ${ev.status}${pctStr} — ${counts}${extra}`);
           } catch (e) {}
         };
-        const status = await ensureEvaV2Fresh({ force: true, progressCallback });
+        const status = await ensureEvaV2Fresh({ force: true, kind: 'periodic', progressCallback });
         const duration = Date.now() - start;
         console.log(`Refresh EVA v2 periodique termine (${status.teams} equipes, ${status.players} joueurs) — ${Math.round(duration/1000)}s.`);
       } catch (err) {
@@ -236,32 +259,36 @@ client.on('interactionCreate', async (interaction) => {
     // --- Autocomplétion ---
     if (interaction.isAutocomplete()) {
       if (interaction.commandName === 'stat') {
-        return gererAutocompleteStat(interaction);
+        return await gererAutocompleteStat(interaction);
       }
       if (interaction.commandName === 'stat-equipe') {
-        return gererAutocompleteStatEquipe(interaction);
+        return await gererAutocompleteStatEquipe(interaction);
       }
       if (interaction.commandName === 'classement') {
-        return gererAutocompleteClassement(interaction);
+        return await gererAutocompleteClassement(interaction);
+      }
+      if (interaction.commandName === 'tournoi') {
+        return await gererAutocompleteTournoi(interaction);
       }
     }
 
     // --- Commandes slash ---
     if (interaction.isChatInputCommand()) {
       switch (interaction.commandName) {
-        case 'help':    return gererCommandeHelp(interaction);
-        case 'ping':    return interaction.reply('Pong ! 🏓');
-        case 'mix':     return gererCommandeMatch(interaction);
-        case 'scrim':   return gererCommandeMatch(interaction);
-        case 'free':    return gererCommandeMatch(interaction);
-        case 'renfort': return gererCommandeRenfort(interaction);
-        case 'stat':    return gererCommandeStat(interaction);
-        case 'stat-equipe': return gererCommandeStatEquipe(interaction);
-        case 'classement': return gererCommandeClassement(interaction);
-        case 'top': return gererCommandeTop(interaction);
-        case 'top-equipe': return gererCommandeTopEquipe(interaction);
-        case 'planning': return gererCommandePlanning(interaction);
-        case 'session': return gererCommandeSession(interaction);
+        case 'help':    return await gererCommandeHelp(interaction);
+        case 'ping':    return await interaction.reply('Pong ! 🏓');
+        case 'mix':     return await gererCommandeMatch(interaction);
+        case 'scrim':   return await gererCommandeMatch(interaction);
+        case 'free':    return await gererCommandeMatch(interaction);
+        case 'renfort': return await gererCommandeRenfort(interaction);
+        case 'stat':    return await gererCommandeStat(interaction);
+        case 'stat-equipe': return await gererCommandeStatEquipe(interaction);
+        case 'classement': return await gererCommandeClassement(interaction);
+        case 'top': return await gererCommandeTop(interaction);
+        case 'top-equipe': return await gererCommandeTopEquipe(interaction);
+        case 'tournoi': return await gererCommandeTournoi(interaction);
+        case 'planning': return await gererCommandePlanning(interaction);
+        case 'session': return await gererCommandeSession(interaction);
       }
     }
 
@@ -272,16 +299,21 @@ client.on('interactionCreate', async (interaction) => {
         interaction.customId === config.BUTTON_ID_REJOINDRE ||
         interaction.customId === config.BUTTON_ID_QUITTER
       ) {
-        return gererBoutonSession(interaction);
+        return await gererBoutonSession(interaction);
       }
       if (interaction.customId.startsWith(config.BUTTON_ID_ANNULER_MATCH)) {
-        return gererBoutonAnnulationMatch(interaction);
+        return await gererBoutonAnnulationMatch(interaction);
       }
     }
   } catch (err) {
     console.error('❌ Erreur interaction :', err);
-    if (interaction.isRepliable() && !interaction.replied) {
-      await interaction.reply({ content: '❌ Une erreur est survenue.', flags: 64 }).catch(() => {});
+    if (interaction.isRepliable()) {
+      const payload = { content: '❌ Une erreur est survenue.', flags: 64 };
+      if (interaction.deferred || interaction.replied) {
+        await interaction.followUp(payload).catch(() => {});
+      } else {
+        await interaction.reply(payload).catch(() => {});
+      }
     }
   }
 });
@@ -314,6 +346,8 @@ async function gererCommandeHelp(interaction) {
     '`/classement site:` : affiche les équipes classées dans une ville ou salle EVA.',
     '`/top` : affiche les meilleurs joueurs EVA de la major league, avec KDA et tendance.',
     '`/top-equipe` : affiche les meilleures équipes EVA de la major league.',
+    '`/tournoi site:` : affiche les prochains tournois locaux EVA et l\'ordre des rencontres publiées.',
+    'Pendant un import ou un refresh EVA, ces commandes répondent immédiatement et demandent de réessayer quelques minutes plus tard.',
     '',
     '**Utilitaires**',
     '`/ping` : vérifie simplement que le bot répond.',
@@ -791,6 +825,7 @@ function programmerTachesDefi(messageId, defi) {
 async function gererCommandeStat(interaction) {
   const joueur = interaction.options.getString('joueur');
   if (!joueur) return interaction.reply({ content: '❌ Indique un joueur EVA.', flags: 64 });
+  if (await repondreSiEvaIndisponible(interaction)) return;
 
   await interaction.deferReply({ flags: 64 });
 
@@ -886,15 +921,17 @@ function limiterMessageDiscord(content, maxLength = 1900) {
   return `${content.slice(0, maxLength - 20)}\n... (tronque)`;
 }
 
-function lancerWarmupEvaAutocomplete() {
-  if (evaAutocompleteWarmupPromise) return;
-  evaAutocompleteWarmupPromise = ensureEvaV2Fresh()
-    .catch(err => {
-      console.error('❌ Warmup autocomplete EVA en erreur :', err.message);
-    })
-    .finally(() => {
-      evaAutocompleteWarmupPromise = null;
-    });
+function getEvaUnavailableMessage() {
+  const reason = getEvaCommandUnavailableReason();
+  if (!reason) return null;
+  return `⏳ ${reason}\nRéessaie dans quelques minutes.`;
+}
+
+async function repondreSiEvaIndisponible(interaction) {
+  const message = getEvaUnavailableMessage();
+  if (!message) return false;
+  await interaction.reply({ content: message, flags: 64 });
+  return true;
 }
 
 async function gererAutocompleteStat(interaction) {
@@ -909,11 +946,9 @@ async function gererAutocompleteStat(interaction) {
         value: player.eva_username || player.name,
       }));
 
-    if (!choices.length) lancerWarmupEvaAutocomplete();
     await interaction.respond(choices);
   } catch (err) {
     console.error('❌ Erreur autocomplete /stat :', err);
-    lancerWarmupEvaAutocomplete();
     await interaction.respond([]).catch(() => {});
   }
 }
@@ -934,11 +969,9 @@ async function gererAutocompleteStatEquipe(interaction) {
         value: team.name,
       }));
 
-    if (!choices.length) lancerWarmupEvaAutocomplete();
     await interaction.respond(choices);
   } catch (err) {
     console.error('❌ Erreur autocomplete /stat-equipe :', err);
-    lancerWarmupEvaAutocomplete();
     await interaction.respond([]).catch(() => {});
   }
 }
@@ -955,11 +988,29 @@ async function gererAutocompleteClassement(interaction) {
         value: standing.name || standing.ranking_name,
       }));
 
-    if (!choices.length) lancerWarmupEvaAutocomplete();
     await interaction.respond(choices);
   } catch (err) {
     console.error('❌ Erreur autocomplete /classement :', err);
-    lancerWarmupEvaAutocomplete();
+    await interaction.respond([]).catch(() => {});
+  }
+}
+
+async function gererAutocompleteTournoi(interaction) {
+  const focused = interaction.options.getFocused().toLowerCase();
+
+  try {
+    const choices = searchTournamentSites(focused, 25)
+      .map(site => ({
+        name: tronquerChoixAutocomplete(
+          `${site.name || 'Site inconnu'}${site.tier_name ? ` - ${site.tier_name}` : ''}`
+        ),
+        value: site.name,
+      }))
+      .filter(choice => choice.value);
+
+    await interaction.respond(choices);
+  } catch (err) {
+    console.error('❌ Erreur autocomplete /tournoi :', err);
     await interaction.respond([]).catch(() => {});
   }
 }
@@ -967,6 +1018,7 @@ async function gererAutocompleteClassement(interaction) {
 async function gererCommandeStatEquipe(interaction) {
   const equipe = interaction.options.getString('equipe');
   if (!equipe) return interaction.reply({ content: '❌ Indique une équipe EVA.', flags: 64 });
+  if (await repondreSiEvaIndisponible(interaction)) return;
 
   await interaction.deferReply({ flags: 64 });
 
@@ -995,6 +1047,7 @@ async function gererCommandeStatEquipe(interaction) {
 async function gererCommandeClassement(interaction) {
   const site = interaction.options.getString('site');
   if (!site) return interaction.reply({ content: '❌ Choisis un site EVA.', flags: 64 });
+  if (await repondreSiEvaIndisponible(interaction)) return;
 
   await interaction.deferReply({ flags: 64 });
 
@@ -1027,7 +1080,93 @@ function parseDivisionNumberFromLabel(label) {
   return match ? Number(match[1]) : 999;
 }
 
+function formatEvaDate(value, includeTime = false) {
+  if (!value) return 'date a definir';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString('fr-FR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    ...(includeTime ? { hour: '2-digit', minute: '2-digit' } : {}),
+  });
+}
+
+function formatTournamentLevel(tournament) {
+  const labels = [
+    tournament.tier_name,
+    tournament.name,
+    tournament.full_name,
+    tournament.circuit_name,
+  ].filter(Boolean);
+  const division = labels.map(parseDivisionNumberFromLabel).find(value => value !== 999);
+  if (division) return `Division ${division}`;
+  return tournament.tier_name || tournament.circuit_name || 'Niveau non precise';
+}
+
+function formatTournamentPeriod(tournament) {
+  const start = formatEvaDate(tournament.scheduled_start);
+  const end = formatEvaDate(tournament.scheduled_end);
+  if (start === end || end === 'date a definir') return start;
+  return `${start} -> ${end}`;
+}
+
+function formatTournamentMatch(match, index) {
+  const division = String(match.stage_name || '').toLowerCase().includes('division') && match.group_number
+    ? `Division ${match.group_number}`
+    : (match.group_name || match.stage_name || null);
+  const label = [
+    division,
+    match.round_name || (match.round_number ? `Round ${match.round_number}` : null),
+    match.match_number ? `Match ${match.match_number}` : null,
+  ].filter(Boolean).join(' - ') || `Match ${index + 1}`;
+  const when = match.scheduled_datetime
+    ? ` - ${formatEvaDate(match.scheduled_datetime, true)}`
+    : '';
+  const score = match.score1 != null || match.score2 != null
+    ? ` (${match.score1 ?? '-'}-${match.score2 ?? '-'})`
+    : '';
+  return `${index + 1}. ${label} : **${match.opponent1 || 'A definir'}** vs **${match.opponent2 || 'A definir'}**${score}${when}`;
+}
+
+async function gererCommandeTournoi(interaction) {
+  const site = interaction.options.getString('site');
+  if (!site) return interaction.reply({ content: '❌ Choisis un site EVA.', flags: 64 });
+  if (await repondreSiEvaIndisponible(interaction)) return;
+
+  await interaction.deferReply({ flags: 64 });
+
+  try {
+    const tournaments = getEvaTournamentsForSite(site, 5);
+    if (!tournaments.length) {
+      return interaction.editReply({ content: `Aucun tournoi local EVA a venir trouve pour **${site}**.` });
+    }
+
+    const lines = [`Tournois EVA locaux - **${site}**`];
+    for (const tournament of tournaments) {
+      lines.push('');
+      lines.push(`**${tournament.name}**`);
+      lines.push(`Site : **${tournament.region_name || tournament.organization || 'N/A'}** | Niveau : **${formatTournamentLevel(tournament)}**`);
+      lines.push(`Dates : **${formatTournamentPeriod(tournament)}** | Statut : **${tournament.status || 'N/A'}**`);
+
+      const matches = (tournament.matches || []).slice(0, 12);
+      if (!matches.length) {
+        lines.push('Rencontres : non publiees pour le moment.');
+      } else {
+        lines.push('Rencontres :');
+        matches.forEach((match, index) => lines.push(formatTournamentMatch(match, index)));
+      }
+    }
+
+    await interaction.editReply({ content: limiterMessageDiscord(lines.join('\n')) });
+  } catch (err) {
+    console.error('❌ Erreur commande /tournoi :', err);
+    await interaction.editReply({ content: `❌ Impossible de lire les tournois EVA. ${err.message}` });
+  }
+}
+
 async function gererCommandeTop(interaction) {
+  if (await repondreSiEvaIndisponible(interaction)) return;
   await interaction.deferReply({ flags: 64 });
 
   try {
@@ -1055,6 +1194,7 @@ async function gererCommandeTop(interaction) {
 }
 
 async function gererCommandeTopEquipe(interaction) {
+  if (await repondreSiEvaIndisponible(interaction)) return;
   await interaction.deferReply({ flags: 64 });
 
   try {
