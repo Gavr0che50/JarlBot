@@ -1,11 +1,11 @@
-# 🤖 JarlBot V1.7.1
+# 🤖 JarlBot V1.7.2
 
 Bot Discord open source pour gérer des **défis d'équipes**, des **sessions spéciales** et des **statistiques EVA**.
 
 Création automatique de **salons privés**, **événements Discord**, **rappels programmés** (48h en MP, 24h et 1h dans le salon), validation par votes, et nettoyage automatique après les matchs.
 
 > **Avant toute installation sur un autre serveur, crée ton propre bot Discord dans le Portail Développeurs.**
-> Le guide complet est dans [INSTALLATION.md](INSTALLATION.md) : création de l'application, intents, permissions, rôle du bot, rôles d'équipes et export portable.
+> Guides complets : [installation Windows](INSTALLATION-WINDOWS.md) et [installation Linux](INSTALLATION-LINUX.md). Ils couvrent la création de l'application, les intents, les permissions, le rôle du bot, les rôles d'équipes et l'export portable.
 >
 > IMPORTANT — utilise un bot que tu contrôles : ne partage pas le `DISCORD_TOKEN`, et ne tente pas d'utiliser un token tiers. Le launcher ne génère plus de lien d'invitation côté interface : crée et invite ton application depuis le portail développeur.
 
@@ -64,6 +64,13 @@ Création automatique de **salons privés**, **événements Discord**, **rappels
 
 Sur Windows, double-clique sur **`JarlBot Launcher.cmd`**.
 
+Sur Linux, lance :
+
+```bash
+chmod +x launcher.sh
+./launcher.sh
+```
+
 Le launcher:
 - installe les dependances si `node_modules` est absent;
 - ouvre une interface locale sombre, pensée pour une prise en main rapide;
@@ -72,7 +79,7 @@ Le launcher:
 - affiche les logs utiles du bot et du launcher;
 - garde une UX simple pour un administrateur non technique.
 
-La création et l'invitation du bot se font depuis le portail Discord. Suis [INSTALLATION.md](INSTALLATION.md) pour ne pas oublier les scopes, permissions et intents.
+La création et l'invitation du bot se font depuis le portail Discord. Suis [INSTALLATION-WINDOWS.md](INSTALLATION-WINDOWS.md) ou [INSTALLATION-LINUX.md](INSTALLATION-LINUX.md) pour ne pas oublier les scopes, permissions et intents.
 
 Tu peux aussi le lancer en terminal:
 
@@ -188,7 +195,7 @@ L'export cree un dossier `dist/JarlBot-portable-...` avec:
 - le code du bot;
 - le launcher graphique;
 - `package.json` et `package-lock.json`;
-- `INSTALLATION.md`, `README.md` et `troubleshoot.md`;
+- `INSTALLATION-WINDOWS.md`, `INSTALLATION-LINUX.md`, `README.md` et `troubleshoot.md`;
 - la licence MIT;
 - `eva-cache.db` si elle existe;
 - `bot-state.db` si elle existe;
@@ -247,7 +254,7 @@ JarlBot/
 ├── .gitignore
 ├── package.json
 ├── JarlBot Launcher.cmd    ← Double-clic Windows pour ouvrir l'interface locale
-├── launcher.sh             ← Lanceur Linux/macOS
+├── launcher.sh             ← Lanceur Linux
 ├── LICENSE                 ← Licence MIT open source
 ├── config.js               ← Configuration éditable
 ├── deploy-commands.js      ← Enregistrement des commandes slash

@@ -1,6 +1,6 @@
-# Installation de JarlBot
+# Installation Windows de JarlBot
 
-Ce guide décrit l'installation propre sur un nouveau poste et l'ajout du bot sur un serveur Discord.
+Ce guide décrit l'installation propre sur un poste Windows et l'ajout du bot sur un serveur Discord.
 
 ## 1. Créer l'application Discord
 

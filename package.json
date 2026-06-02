@@ -1,6 +1,6 @@
 {
   "name": "jarlbot",
-  "version": "1.7.1",
+  "version": "1.7.2",
   "description": "Discord bot and portable launcher for EVA community administration.",
   "main": "index.js",
   "author": "Gavr0che",
@@ -34,7 +34,8 @@
     "scripts/",
     "utils/",
     "README.md",
-    "INSTALLATION.md",
+    "INSTALLATION-WINDOWS.md",
+    "INSTALLATION-LINUX.md",
     "troubleshoot.md",
     "VULGARISATION.md",
     "LICENSE",

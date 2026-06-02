@@ -1,5 +1,5 @@
 // ========================================
-// 📡 DEPLOY COMMANDS — JarlBot V1.7.1
+// 📡 DEPLOY COMMANDS — JarlBot V1.7.2
 // Enregistre les commandes slash sur ton serveur Discord
 // Lance avec : node deploy-commands.js
 // ========================================
