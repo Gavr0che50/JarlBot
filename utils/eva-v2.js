@@ -341,14 +341,13 @@ async function estimateRefreshETA({ full = false } = {}) {
   }
 }
 
-async function graphql(query, variables = {}, token = process.env.EVA_ACCESS_TOKEN || null) {
+async function graphql(query, variables = {}) {
   const headers = {
     'Content-Type': 'application/json',
     Accept: 'application/json',
     Origin: 'https://app.eva.gg',
     Referer: 'https://app.eva.gg/',
   };
-  if (token) headers.Authorization = `Bearer ${token}`;
 
   const payload = await fetchJson(GRAPHQL_URL, {
     method: 'POST',
@@ -409,7 +408,7 @@ async function getActiveSeason() {
         name
       }
     }
-  `, {}, null);
+  `, {});
   return data.seasonActive || null;
 }
 
@@ -954,6 +953,7 @@ async function ensureEvaV2Fresh({ force = false, full = false, progressCallback 
       setMeta('core_refresh', '1');
     }
     await refreshStaleRosters({ full }, progressCallback);
+    await refreshMajorPlayerStats({ full });
     return getEvaV2Status();
   })().finally(() => {
     refreshPromise = null;

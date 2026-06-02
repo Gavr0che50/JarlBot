@@ -1,5 +1,5 @@
 // ========================================
-// 📡 DEPLOY COMMANDS — JarlBot V1.1
+// 📡 DEPLOY COMMANDS — JarlBot V1.7.1
 // Enregistre les commandes slash sur ton serveur Discord
 // Lance avec : node deploy-commands.js
 // ========================================
@@ -237,28 +237,39 @@ const commands = [
     ),
 ];
 
-module.exports = commands.map(cmd => cmd.toJSON());
+const commandPayload = commands.map(cmd => cmd.toJSON());
+
+module.exports = commandPayload;
 
 // ========================================
 // 🚀 Envoi des commandes à Discord
 // ========================================
 
-const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
-
-(async () => {
+async function deployCommands() {
   try {
     console.log('🔄 Enregistrement des commandes slash...');
+
+    if (!process.env.DISCORD_TOKEN || !process.env.CLIENT_ID || !process.env.GUILD_ID) {
+      throw new Error('DISCORD_TOKEN, CLIENT_ID et GUILD_ID sont requis dans .env.');
+    }
+
+    const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 
     await rest.put(
       Routes.applicationGuildCommands(
         process.env.CLIENT_ID,
         process.env.GUILD_ID
       ),
-      { body: commands }
+      { body: commandPayload }
     );
 
-    console.log(`✅ ${commands.length} commande(s) enregistrée(s) avec succès !`);
+    console.log(`✅ ${commandPayload.length} commande(s) enregistrée(s) avec succès !`);
   } catch (error) {
     console.error('❌ Erreur lors de l\'enregistrement :', error);
+    process.exitCode = 1;
   }
-})();
+}
+
+if (require.main === module) {
+  deployCommands();
+}

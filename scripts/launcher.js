@@ -49,7 +49,7 @@ function serializeEnv(values) {
     'CLIENT_ID',
     'GUILD_ID',
     'CATEGORIE_DEFIS_ID',
-    'EVA_ACCESS_TOKEN',
+    'JARLBOT_MODE',
     'EVA_COMPETITIVE_API_BASE_URL',
     'EVA_GRAPHQL_URL',
     'EVA_LOCAL_LEAGUES_CIRCUIT_ID',
@@ -140,50 +140,55 @@ function tail(file, maxLines = 160) {
   return lines.slice(Math.max(0, lines.length - maxLines)).join('\n');
 }
 
-function startBot() {
-  if (botProcess && !botProcess.killed) {
-    if (!deployProcess || deployProcess.killed) {
-      const deployOut = fs.openSync(LAUNCHER_LOG, 'a');
-      deployProcess = spawn(process.execPath, ['deploy-commands.js'], {
-        cwd: ROOT,
-        stdio: ['ignore', deployOut, deployOut],
-        env: { ...process.env, ...readEnv() },
-      });
-      deployProcess.on('exit', code => {
-        log(`Deploy slash commands termine avec code ${code}.`);
-        deployProcess = null;
-      });
-      log(`Deploy slash commands lance (pid ${deployProcess.pid}).`);
-    }
-    return { started: false, message: 'Bot deja lance; slash commands enregistrees.' };
-  }
+function deploySlashCommands() {
+  if (deployProcess && !deployProcess.killed) return;
+  const deployOut = fs.openSync(LAUNCHER_LOG, 'a');
+  deployProcess = spawn(process.execPath, ['deploy-commands.js'], {
+    cwd: ROOT,
+    stdio: ['ignore', deployOut, deployOut],
+    env: { ...process.env, ...readEnv() },
+  });
+  deployProcess.on('exit', code => {
+    log(`Deploy slash commands termine avec code ${code}.`);
+    deployProcess = null;
+  });
+  log(`Deploy slash commands lance (pid ${deployProcess.pid}).`);
+}
+
+function spawnBotProcess() {
   const out = fs.openSync(BOT_OUT_LOG, 'a');
   const err = fs.openSync(BOT_ERR_LOG, 'a');
-  botProcess = spawn(process.execPath, ['index.js'], {
+  const child = spawn(process.execPath, ['index.js'], {
     cwd: ROOT,
     detached: false,
     stdio: ['ignore', out, err],
     env: { ...process.env, ...readEnv() },
   });
-  botProcess.on('exit', code => {
+  botProcess = child;
+  child.on('exit', code => {
     log(`Bot arrete avec code ${code}.`);
-    botProcess = null;
+    if (botProcess === child) botProcess = null;
   });
   log(`Bot lance (pid ${botProcess.pid}).`);
-  if (!deployProcess || deployProcess.killed) {
-    const deployOut = fs.openSync(LAUNCHER_LOG, 'a');
-    deployProcess = spawn(process.execPath, ['deploy-commands.js'], {
-      cwd: ROOT,
-      stdio: ['ignore', deployOut, deployOut],
-      env: { ...process.env, ...readEnv() },
-    });
-    deployProcess.on('exit', code => {
-      log(`Deploy slash commands termine avec code ${code}.`);
-      deployProcess = null;
-    });
-    log(`Deploy slash commands lance (pid ${deployProcess.pid}).`);
+  return child;
+}
+
+function startBot() {
+  let restarted = false;
+  if (botProcess && !botProcess.killed) {
+    const oldPid = botProcess.pid;
+    botProcess.kill();
+    restarted = true;
+    log(`Redemarrage du bot demande pour appliquer la configuration (ancien pid ${oldPid}).`);
   }
-  return { started: true, pid: botProcess.pid };
+  const child = spawnBotProcess();
+  deploySlashCommands();
+  return {
+    started: true,
+    restarted,
+    pid: child.pid,
+    message: restarted ? 'Bot redemarre + slash commands enregistrees.' : 'Bot lance + slash commands enregistrees.',
+  };
 }
 
 function stopBot() {
@@ -492,6 +497,12 @@ const html = `<!doctype html>
       <input id="GUILD_ID" placeholder="Ex: 123456789012345678" />
       <label>Categorie des salons matchs</label>
       <input id="CATEGORIE_DEFIS_ID" placeholder="ID de la categorie Discord" />
+      <label>Mode de fonctionnement</label>
+      <select id="JARLBOT_MODE">
+        <option value="prod">Production - validation par role adverse</option>
+        <option value="test">Test - une personne valide tout</option>
+      </select>
+      <p class="section-note" style="margin-top:8px">Le mode test sert a verifier les commandes, salons, evenements, suppressions et rappels sans mobiliser plusieurs joueurs.</p>
       <div class="launch-band">
         <div>
           <strong>Lancer le bot</strong>
@@ -545,6 +556,7 @@ const html = `<!doctype html>
       pill.querySelector('strong').textContent = status.botRunning ? 'Bot en ligne' : 'Bot arrete';
       pill.querySelector('span.status-copy span').textContent = status.botRunning ? 'Pret a recevoir des commandes' : 'Prend quelques secondes au demarrage';
       for (const key of ['CLIENT_ID', 'GUILD_ID', 'CATEGORIE_DEFIS_ID']) document.getElementById(key).value = status.env[key] || '';
+      document.getElementById('JARLBOT_MODE').value = status.env.JARLBOT_MODE || 'prod';
       document.getElementById('DISCORD_TOKEN').placeholder = status.env.DISCORD_TOKEN ? 'Token deja configure (' + status.env.DISCORD_TOKEN + ')' : 'Colle le token Discord ici';
       // invite links are not displayed in the launcher UI by design
     }
@@ -555,7 +567,7 @@ const html = `<!doctype html>
     }
     async function saveConfig() {
       const payload = {};
-      for (const key of ['DISCORD_TOKEN','CLIENT_ID','GUILD_ID','CATEGORIE_DEFIS_ID']) {
+      for (const key of ['DISCORD_TOKEN','CLIENT_ID','GUILD_ID','CATEGORIE_DEFIS_ID','JARLBOT_MODE']) {
         const value = document.getElementById(key).value.trim();
         if (value) payload[key] = value;
       }
@@ -565,7 +577,7 @@ const html = `<!doctype html>
     }
     async function saveAndStart() {
       const payload = {};
-      for (const key of ['DISCORD_TOKEN','CLIENT_ID','GUILD_ID','CATEGORIE_DEFIS_ID']) {
+      for (const key of ['DISCORD_TOKEN','CLIENT_ID','GUILD_ID','CATEGORIE_DEFIS_ID','JARLBOT_MODE']) {
         const value = document.getElementById(key).value.trim();
         if (value) payload[key] = value;
       }
@@ -609,8 +621,8 @@ async function handle(req, res) {
           CLIENT_ID: env.CLIENT_ID || '',
           GUILD_ID: env.GUILD_ID || '',
           CATEGORIE_DEFIS_ID: env.CATEGORIE_DEFIS_ID || '',
+          JARLBOT_MODE: env.JARLBOT_MODE || 'prod',
           DISCORD_TOKEN: mask(env.DISCORD_TOKEN),
-          EVA_ACCESS_TOKEN: mask(env.EVA_ACCESS_TOKEN),
         },
         botRunning: Boolean(botProcess && !botProcess.killed),
         refreshRunning: Boolean(refreshProcess && !refreshProcess.killed),
@@ -643,17 +655,7 @@ async function handle(req, res) {
         json(res, { ok: false, message: 'Enregistrement deja en cours.' });
         return;
       }
-      const out = fs.openSync(LAUNCHER_LOG, 'a');
-      deployProcess = spawn(process.execPath, ['deploy-commands.js'], {
-        cwd: ROOT,
-        stdio: ['ignore', out, out],
-        env: { ...process.env, ...readEnv() },
-      });
-      deployProcess.on('exit', code => {
-        log(`Deploy slash commands termine avec code ${code}.`);
-        deployProcess = null;
-      });
-      log(`Deploy slash commands lance (pid ${deployProcess.pid}).`);
+      deploySlashCommands();
       json(res, { ok: true, message: 'Enregistrement des commandes lance.' });
       return;
     }

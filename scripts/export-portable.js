@@ -14,7 +14,9 @@ const target = path.join(DIST, `JarlBot-portable-${stamp}`);
 const entries = [
   '.env.example',
   'README.md',
+  'INSTALLATION.md',
   'troubleshoot.md',
+  'VULGARISATION.md',
   'LICENSE',
   'package.json',
   'package-lock.json',
@@ -74,10 +76,11 @@ fs.writeFileSync(path.join(target, 'README-PORTABLE.txt'), [
   '1. Installer Node.js 24+ si besoin.',
   '2. Double-cliquer sur "JarlBot Launcher.cmd" sous Windows.',
   '3. Renseigner les IDs Discord et sauvegarder.',
-  '4. Ouvrir le lien invitation pour ajouter le bot au serveur.',
-  '5. Cliquer sur "Enregistrer slash commands", puis "Lancer le bot".',
+  '4. Suivre INSTALLATION.md pour creer et inviter le bot depuis le portail Discord.',
+  '5. Cliquer sur "Sauvegarder et lancer". Les slash commands sont enregistrees automatiquement.',
   '',
   'La base EVA locale eva-cache.db est incluse si elle existait au moment de l export.',
+  'La base bot-state.db est incluse si elle existait pour conserver les defis/sessions programmes.',
   'Ne partage pas ton fichier .env s il contient un token Discord.',
   '',
 ].join('\n'), 'utf8');

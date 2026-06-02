@@ -1,10 +1,12 @@
 // ========================================
-// 🔧 CONFIGURATION DU BOT — JarlBot V1.1
-// Modifie ces valeurs selon tes préférences
+// 🔧 CONFIGURATION DU BOT — JarlBot V1.7.1
+// Réglages métier et valeurs par défaut non sensibles.
 // ========================================
 
 const MINUTE = 60 * 1000;
 const HOUR = 60 * MINUTE;
+const MODE = String(process.env.JARLBOT_MODE || 'prod').toLowerCase() === 'test' ? 'test' : 'prod';
+const MODE_TEST = MODE === 'test';
 
 module.exports = {
 
@@ -12,14 +14,10 @@ module.exports = {
   // ⚙️ PARAMÈTRES GÉNÉRAUX
   // ========================================
 
-  // Nombre de votes ✅ nécessaires de l'équipe adverse pour valider un match
-  // 🧪 Mode test : mets 1 (validation immédiate)
-  // 🚀 Mode prod : mets 4 ou plus
-  SEUIL_VALIDATION: 1,
-
-  // Préfixe utilisé pour nommer les salons privés créés automatiquement
-  // Exemple final : match-mix-25-12-2025
-  PREFIXE_SALON_PRIVE: 'match',
+  // test : validation par une personne, délais raccourcis.
+  // prod : validation par rôle adverse, de 1 à 4 votes selon les membres du rôle.
+  MODE,
+  MODE_TEST,
 
 
   // ========================================
@@ -54,25 +52,21 @@ module.exports = {
   // Astuce : 1000 = 1s | 60_000 = 1min | 3_600_000 = 1h
   // ========================================
 
-  EVA_DEFAULT_LOCAL_LEAGUES_CIRCUIT_ID: '2395738311350114303',
-  EVA_RATE_LIMIT_MAX_DELAY_MS: 5000,
-  EVA_GRAPHQL_TIMEOUT_MS: 5000,
-  EVA_CACHE_BEST_SCORE_BONUS: 100000,
   EVA_TEAM_LINEUP_DISPLAY_LIMIT: 8,
   EVA_TOP_PLAYERS_LIMIT: 10,
   EVA_PLANNING_WINDOW_DAYS: 7,
 
   // --- Défis ---
-  RAPPEL_MP_AVANT_MATCH:    48 * HOUR, // 48h avant : MP aux intéressés
-  RAPPEL_24H_AVANT_MATCH:   24 * HOUR, // 24h avant : message dans le salon
-  RAPPEL_1H_AVANT_MATCH:     1 * HOUR, //  1h avant : message dans le salon
+  RAPPEL_MP_AVANT_MATCH:    MODE_TEST ? 2 * MINUTE : 48 * HOUR, // test: 2 min avant, prod: 48h
+  RAPPEL_24H_AVANT_MATCH:   MODE_TEST ? 90 * 1000 : 24 * HOUR, // test: 90s avant, prod: 24h
+  RAPPEL_1H_AVANT_MATCH:    MODE_TEST ? 30 * 1000 : 1 * HOUR, // test: 30s avant, prod: 1h
   DUREE_UN_MATCH:           40 * MINUTE,      // 40 min par match
-  DELAI_SUPPRESSION_SALON:  48 * HOUR, // 48h après : suppression salon + event
+  DELAI_SUPPRESSION_SALON:  MODE_TEST ? 5 * MINUTE : 48 * HOUR, // test: 5 min après, prod: 48h
 
   // --- Sessions ---
-  DUREE_SESSION:             3 * HOUR, // 3h de durée par défaut
-  RAPPEL_MP_SESSION_AVANT:  48 * HOUR, // 48h avant : MP aux participants
-  DELAI_SUPPRESSION_SALON_SESSION: 48 * HOUR, // 48h après la session
+  DUREE_SESSION:             MODE_TEST ? 10 * MINUTE : 3 * HOUR, // test: 10 min, prod: 3h
+  RAPPEL_MP_SESSION_AVANT:   MODE_TEST ? 2 * MINUTE : 48 * HOUR, // test: 2 min avant, prod: 48h
+  DELAI_SUPPRESSION_SALON_SESSION: MODE_TEST ? 5 * MINUTE : 48 * HOUR, // test: 5 min, prod: 48h
 
 
 
@@ -87,15 +81,6 @@ module.exports = {
     process.env.EVA_GRAPHQL_URL ||
     'https://api.eva.gg/graphql',
   EVA_LOCAL_LEAGUES_CIRCUIT_ID: process.env.EVA_LOCAL_LEAGUES_CIRCUIT_ID || '2395738311350114303',
-  EVA_PLAYER_MIN_MATCHES: Number(process.env.EVA_PLAYER_MIN_MATCHES || 5),
-  EVA_PUBLIC_PLAYER_BATCH_SIZE: Number(process.env.EVA_PUBLIC_PLAYER_BATCH_SIZE || 8),
-  EVA_PLAYER_RESOLUTION_INTERVAL_MS: Number(process.env.EVA_PLAYER_RESOLUTION_INTERVAL_MS || 1000),
-  EVA_PLAYER_RESOLUTION_JITTER_MS: Number(process.env.EVA_PLAYER_RESOLUTION_JITTER_MS || 1000),
-  EVA_PLAYER_SUGGESTIONS: process.env.EVA_PLAYER_SUGGESTIONS || '',
-  EVA_DATA_REFRESH_MS: Number(process.env.EVA_DATA_REFRESH_MS || 12 * HOUR),
-  EVA_PLAYERS_CACHE_MS: Number(process.env.EVA_PLAYERS_CACHE_MS || 30 * MINUTE),
-  EVA_REQUEST_CACHE_MS: Number(process.env.EVA_REQUEST_CACHE_MS || 10 * MINUTE),
-  EVA_API_MIN_INTERVAL_MS: Number(process.env.EVA_API_MIN_INTERVAL_MS || 117),
   EVA_MAJOR_TOURNAMENT_IDS: process.env.EVA_MAJOR_TOURNAMENT_IDS || '2385727403616917503',
   EVA_V2_CACHE_TTL_MS: Number(process.env.EVA_V2_CACHE_TTL_MS || 24 * HOUR),
   EVA_V2_MIN_INTERVAL_MS: Number(process.env.EVA_V2_MIN_INTERVAL_MS || 120),
@@ -127,7 +112,11 @@ module.exports = {
           `🕐 Heure : **${defi.heure}**\n\n` +
           `Tout le monde peut y participer.\n` +
           `Réagissez avec ✅ pour rejoindre la partie.\n` +
-          `Il faut **${defi.nombreJoueurs}** joueur(s) pour lancer le free.`;
+          (
+            module.exports.MODE_TEST
+              ? `Mode test : **1 participant** suffit pour lancer le free.`
+              : `Il faut **${defi.nombreJoueurs}** joueur(s) pour lancer le free.`
+          );
       }
       return `📢 **Nouveau match !**\n\n` +
         `${monEquipe} défie ${adversaire} !\n` +
@@ -136,7 +125,11 @@ module.exports = {
         `📅 Date : **${defi.date}**\n` +
         `🕐 Heure : **${defi.heure}**\n\n` +
         `${adversaire} → Réagissez avec ✅ pour accepter ou ❌ pour refuser.\n` +
-        `Il faut **${module.exports.SEUIL_VALIDATION} vote(s) ✅** de l'équipe adverse pour valider le match.`;
+        (
+          module.exports.MODE_TEST
+            ? `Mode test : **1 vote ✅ ou ❌** suffit pour tester la validation.`
+            : `Mode prod : il faut **1 à 4 vote(s) ✅** de l'équipe adverse selon le nombre de membres du rôle.`
+        );
     },
 
     BIENVENUE_SALON_PRIVE: (defi) => {
@@ -151,7 +144,7 @@ module.exports = {
           `👥 Participants : ${participants}\n\n` +
           `Ce salon est privé : seuls les joueurs inscrits peuvent y discuter.\n` +
           `Il restera disponible jusqu'à la fin du free.\n\n` +
-          `⏰ **Cliquez sur l'horloge ci-dessous pour être notifié(e) en MP 48h avant le free !**`;
+          `⏰ **Cliquez sur l'horloge ci-dessous pour être notifié(e) en MP ${module.exports.MODE_TEST ? '2 minutes' : '48h'} avant le free !**`;
       }
       return `🎉 **Match accepté !**\n\n` +
         `<@&${defi.monEquipeId}> vs <@&${defi.adversaireId}>\n` +
@@ -159,15 +152,19 @@ module.exports = {
         `⚔️ Nombre de matchs : **${defi.nombreMatchs}** (~${defi.nombreMatchs * 40} min)\n` +
         `📅 Date : **${defi.date}** à **${defi.heure}**\n\n` +
         `Ce salon est privé : seules les deux équipes peuvent y discuter.\n` +
-        `Il sera supprimé automatiquement 48h après le match.\n\n` +
-        `⏰ **Cliquez sur l'horloge ci-dessous pour être notifié(e) en MP 48h avant le match !**`;
+        `Il sera supprimé automatiquement ${module.exports.MODE_TEST ? '5 minutes' : '48h'} après le match.\n\n` +
+        `⏰ **Cliquez sur l'horloge ci-dessous pour être notifié(e) en MP ${module.exports.MODE_TEST ? '2 minutes' : '48h'} avant le match !**`;
     },
 
     DEFI_ACCEPTE_REPLY: (defi, salonId) =>
       `✅ **Match validé !** Rendez-vous dans <#${salonId}> 🎮`,
 
-    RAPPEL_24H: `⏰ **Rappel : votre match a lieu dans 24h !**`,
-    RAPPEL_1H:  `🔥 **Rappel : votre match commence dans 1h !** Préparez-vous !`,
+    RAPPEL_24H: MODE_TEST
+      ? `⏰ **Rappel test : votre match approche !**`
+      : `⏰ **Rappel : votre match a lieu dans 24h !**`,
+    RAPPEL_1H: MODE_TEST
+      ? `🔥 **Rappel test : votre match commence bientôt !** Préparez-vous !`
+      : `🔥 **Rappel : votre match commence dans 1h !** Préparez-vous !`,
 
     RAPPEL_MP: (defi) => {
       if (defi.type === 'free') {
@@ -208,7 +205,7 @@ module.exports = {
 
     SESSION_DESCRIPTION: (type) =>
       `Une session **${type}** est proposée !\n` +
-      `Clique sur **Je participe** pour t'inscrire. 🚀`,
+      `Clique sur **Je participe** pour t'inscrire.${module.exports.MODE_TEST ? ' Mode test : une inscription lance la session.' : ' 🚀'}`,
 
     SESSION_PARTICIPANTS_VIDE: `*Aucun participant pour l'instant...*`,
 
@@ -225,7 +222,7 @@ module.exports = {
     },
 
     RAPPEL_MP_SESSION: (session) =>
-      `⏰ **Rappel : la session ${session.type} commence dans 48h !**\n\n` +
+      `⏰ **Rappel : la session ${session.type} commence dans ${module.exports.MODE_TEST ? '2 minutes' : '48h'} !**\n\n` +
       `📅 Date : **${session.date}** à **${session.heure}**\n\n` +
       `À tout à l'heure ! 🎮`,
 

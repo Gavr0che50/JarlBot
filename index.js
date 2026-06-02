@@ -1,5 +1,5 @@
 // ========================================
-// 🤖 JarlBot — V1.1
+// 🤖 JarlBot — V1.7.1
 // Bot de gestion de défis d'équipes + sessions
 // ========================================
 
@@ -73,6 +73,35 @@ function getNomRole(guild, roleId, fallback = 'Équipe') {
 /** Programme une tâche si la date est dans le futur */
 function planifier(nom, date, maintenant, callback) {
   if (date > maintenant) schedule.scheduleJob(nom, date, callback);
+}
+
+/** Calcule le seuil de votes requis pour accepter ou refuser un match. */
+async function calculerSeuilValidation(guild, roleId) {
+  if (config.MODE_TEST) {
+    return {
+      membresAdverses: 0,
+      seuil: 1,
+      roleVoteId: null,
+      mode: 'test',
+    };
+  }
+
+  const membresAdverses = await getRoleMemberCount(guild, roleId);
+
+  return {
+    membresAdverses,
+    seuil: membresAdverses > 0 ? Math.min(4, membresAdverses) : 1,
+    roleVoteId: roleId,
+    mode: 'prod',
+  };
+}
+
+function getNombreJoueursRequisFree(matchData) {
+  return config.MODE_TEST ? 1 : matchData.nombreJoueurs;
+}
+
+function getJoueursRequisSession(session) {
+  return config.MODE_TEST ? 1 : session.joueursRequis;
 }
 
 /** Génère un nom de salon basé sur le défi */
@@ -365,25 +394,26 @@ client.on('messageReactionAdd', async (reaction, user) => {
   if (emoji === config.EMOJI_ACCEPTER) {
     if (matchData.type === 'free') {
       const participantIds = await mettreAJourListeParticipantsFree(reaction.message, matchData);
-      console.log(`🗳️ Free ${reaction.message.id} : ${participantIds.length}/${matchData.nombreJoueurs} participants`);
-      if (participantIds.length >= matchData.nombreJoueurs) {
+      const joueursRequis = getNombreJoueursRequisFree(matchData);
+      console.log(`🗳️ Free ${reaction.message.id} : ${participantIds.length}/${joueursRequis} participants${config.MODE_TEST ? ' (mode test)' : ''}`);
+      if (participantIds.length >= joueursRequis) {
         await validerDefi(reaction.message, matchData);
       }
     } else {
-      const adversaireCount = await getRoleMemberCount(guild, matchData.adversaireId);
-      const threshold = adversaireCount === 0 ? 1 : Math.min(4, adversaireCount);
-      const votes = await compterVotesValides(reaction, guild, matchData.adversaireId);
-      console.log(`🗳️ ${matchData.type} ${reaction.message.id} : ${votes}/${threshold} votes valides (${adversaireCount} membres au rôle)`);
+      const { seuil: threshold, membresAdverses: adversaireCount, roleVoteId, mode } =
+        await calculerSeuilValidation(guild, matchData.adversaireId);
+      const votes = await compterVotesValides(reaction, guild, roleVoteId);
+      console.log(`🗳️ ${matchData.type} ${reaction.message.id} : ${votes}/${threshold} votes valides (${mode === 'test' ? 'mode test' : `${adversaireCount} membres au rôle`})`);
 
       if (votes >= threshold) {
         await validerDefi(reaction.message, matchData);
       }
     }
   } else if (emoji === config.EMOJI_REFUSER && matchData.type !== 'free') {
-    const adversaireCount = await getRoleMemberCount(guild, matchData.adversaireId);
-    const threshold = adversaireCount === 0 ? 1 : Math.min(4, adversaireCount);
-    const votes = await compterVotesRefus(reaction, guild, matchData.adversaireId);
-    console.log(`🗳️ ${matchData.type} ${reaction.message.id} : ${votes}/${threshold} votes refus (${adversaireCount} membres au rôle)`);
+    const { seuil: threshold, membresAdverses: adversaireCount, roleVoteId, mode } =
+      await calculerSeuilValidation(guild, matchData.adversaireId);
+    const votes = await compterVotesRefus(reaction, guild, roleVoteId);
+    console.log(`🗳️ ${matchData.type} ${reaction.message.id} : ${votes}/${threshold} votes refus (${mode === 'test' ? 'mode test' : `${adversaireCount} membres au rôle`})`);
 
     if (votes >= threshold) {
       await refuserDefi(reaction.message, matchData);
@@ -476,8 +506,10 @@ function construireResumeParticipantsFree(participantIds, nombreJoueurs) {
   const mentions = participantIds.length > 0
     ? participantIds.map(id => `<@${id}>`).join('\n')
     : '*Aucun participant pour l’instant*';
+  const requis = config.MODE_TEST ? 1 : nombreJoueurs;
+  const suffixeMode = config.MODE_TEST && nombreJoueurs > 1 ? ` (mode test, demandé ${nombreJoueurs})` : '';
 
-  return `\n\n👥 **Participants** (${participantIds.length}/${nombreJoueurs})\n${mentions}`;
+  return `\n\n👥 **Participants** (${participantIds.length}/${requis}${suffixeMode})\n${mentions}`;
 }
 
 function trouverDefiParSalonId(salonId) {
@@ -1255,13 +1287,17 @@ function construireEmbedSession(session, lancee = false) {
   const participantsTexte = session.participants.length > 0
     ? session.participants.map(id => `<@${id}>`).join('\n')
     : config.MESSAGES.SESSION_PARTICIPANTS_VIDE;
+  const joueursRequis = getJoueursRequisSession(session);
+  const joueursValue = config.MODE_TEST && session.joueursRequis > 1
+    ? `${session.participants.length} / ${joueursRequis} (test, demandé ${session.joueursRequis})`
+    : `${session.participants.length} / ${joueursRequis}`;
 
   const embed = new EmbedBuilder()
     .setColor(lancee ? config.COULEUR_SESSION_LANCEE : config.COULEUR_SESSION_OUVERTE)
     .setTitle(config.MESSAGES.SESSION_TITRE(session.type))
     .setDescription(config.MESSAGES.SESSION_DESCRIPTION(session.type))
     .addFields(
-      { name: '👥 Joueurs', value: `${session.participants.length} / ${session.joueursRequis}`, inline: true },
+      { name: '👥 Joueurs', value: joueursValue, inline: true },
       { name: '📅 Date', value: session.date, inline: true },
       { name: '🕐 Heure', value: session.heure, inline: true },
     )
@@ -1350,7 +1386,7 @@ async function gererBoutonSession(interaction) {
     session.participants = session.participants.filter(id => id !== userId);
   }
 
- if (session.participants.length >= session.joueursRequis) {
+ if (session.participants.length >= getJoueursRequisSession(session)) {
   session.lancee = true;
 
   try {
@@ -1375,7 +1411,7 @@ async function gererBoutonSession(interaction) {
       `📅 Date : **${session.date}** à **${session.heure}**\n` +
       `👥 Participants : ${session.participants.map(id => `<@${id}>`).join(' ')}\n\n` +
       `Bienvenue dans votre salon privé de session !\n\n` +
-      `⏰ Réagis avec ${config.EMOJI_RAPPEL_MP} si tu veux être notifié(e) en MP 48h avant la session.`
+      `⏰ Réagis avec ${config.EMOJI_RAPPEL_MP} si tu veux être notifié(e) en MP ${config.MODE_TEST ? '2 minutes' : '48h'} avant la session.`
     );
     await messageBienvenue.react(config.EMOJI_RAPPEL_MP);
     session.messageBienvenueId = messageBienvenue.id;

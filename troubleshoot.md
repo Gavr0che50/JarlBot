@@ -2,6 +2,11 @@
 
 > Ce document te guide pas à pas pour installer JarlBot sur un nouveau PC, et recense toutes les erreurs connues avec leurs solutions.
 
+> **Important : si tu installes ce projet pour ton serveur, crée d'abord ton propre bot Discord dans le Portail Développeurs.**
+> Crée un **nouveau** bot dédié à ton serveur (ne réutilise pas un token existant). Active les intents requis, récupère ton `CLIENT_ID` et ton `DISCORD_TOKEN`, puis invite ce bot sur ton serveur via le portail développeur.
+>
+> Remarque : le launcher n'expose plus de lien d'invitation côté interface web. Invite ton bot depuis le portail développeur pour t'assurer d'avoir les bonnes permissions et intents.
+
 ---
 
 ## 📦 ÉTAPE 1 — Installer Node.js
@@ -87,8 +92,8 @@ DISCORD_TOKEN=ton_token_secret_ici
 CLIENT_ID=id_de_ton_application
 GUILD_ID=id_de_ton_serveur_discord
 CATEGORIE_DEFIS_ID=id_de_la_categorie_pour_les_salons
+JARLBOT_MODE=prod
 EVA_GRAPHQL_URL=https://api.eva.gg/graphql
-EVA_ACCESS_TOKEN=token_de_session_eva_optionnel
 EVA_MAJOR_TOURNAMENT_IDS=2385727403616917503
 EVA_V2_CACHE_TTL_MS=86400000
 EVA_V2_MIN_INTERVAL_MS=120
@@ -105,6 +110,7 @@ EVA_V2_TEAM_MEMBER_FULL_REFRESH_LIMIT=2000
 | `CLIENT_ID` | Même page → **General Information** → **Application ID** |
 | `GUILD_ID` | Discord → clic droit sur ton serveur → **Copier l'identifiant du serveur** |
 | `CATEGORIE_DEFIS_ID` | Discord → clic droit sur la catégorie → **Copier l'identifiant** |
+| `JARLBOT_MODE` | `prod` pour l'usage réel, `test` pour vérifier seul les commandes et salons |
 
 > ⚠️ Pour voir les IDs dans Discord : **Paramètres utilisateur** → **Avancé** → active **Mode développeur**
 
@@ -117,7 +123,6 @@ EVA_V2_TEAM_MEMBER_FULL_REFRESH_LIMIT=2000
 | Le fichier s'appelle `.env.txt` | Active l'affichage des extensions dans l'explorateur Windows et renomme-le |
 | `TokenInvalid` au lancement | Token mal copié, espace en trop, ou token révoqué → régénère-le |
 | `CATEGORIE_DEFIS_ID` vide | Le bot ne pourra pas créer de salons privés → obligatoire |
-| `EVA_ACCESS_TOKEN` refusé | Le token EVA a expiré ou le compte n'a pas les droits nécessaires |
 
 ---
 
@@ -245,7 +250,7 @@ Le bot cherche un message supprimé.
 2. Pour repartir propre, supprime `bot-state.db` puis relance le bot pour reconstruire la base
 
 ### `EVA GraphQL error 429`
-Le worker EVA ou une commande live a trop sollicité l'API.
+Le moteur EVA intégré ou une commande live a trop sollicité l'API.
 
 **Solutions :**
 1. Attends la fin du backoff automatique
@@ -270,10 +275,10 @@ L'API Competitive refuse un `Range` trop large ou au-dela du nombre total de res
 Deux processus ecrivent dans `eva-cache.db` en meme temps.
 
 **Solutions :**
-1. Coupe les anciens processus `node index.js` ou `node scripts/eva-refresh.js --daemon`
-2. Lance un seul worker de refresh a la fois
+1. Coupe les anciens processus `node index.js` ou un ancien `node scripts/eva-refresh.js --daemon` resté ouvert
+2. Lance un seul refresh manuel a la fois
 3. Relance `npm run eva-refresh:reset` si le cache est incoherent
-4. Le moteur v2 utilise WAL + `busy_timeout`, mais il ne faut pas multiplier les workers
+4. Le moteur v2 utilise WAL + `busy_timeout`, mais il ne faut pas multiplier les processus qui ecrivent dans la base
 
 ---
 
@@ -283,7 +288,7 @@ La commande `/stat` n'a pas trouvé de correspondance assez proche pour le pseud
 **Solutions :**
 1. Essaie le pseudo exact si tu le connais
 2. Vérifie que le joueur existe bien côté EVA public
-3. Attends que `npm run eva-refresh:reset` ou le daemon ait indexe le roster de son equipe
+3. Attends que le refresh intégré ou `npm run eva-refresh:reset` ait indexe le roster de son equipe
 4. Si plusieurs joueurs sont proches du même pseudo, le bot garde le meilleur match local/public
 5. Si le profil n'est dans aucun roster local/public, l'annuaire EVA global peut rester inaccessible avec le token actuel
 
@@ -350,11 +355,12 @@ C'est volontaire. L'export ne copie pas `.env` pour eviter une fuite du token Di
 
 ---
 
-### Les rappels (48h, 24h, 1h) ne se déclenchent pas
+### Les rappels ne se déclenchent pas
 **Vérifications :**
 1. Le bot était-il allumé au moment prévu ?
 2. Les tâches sont reprogrammées au démarrage → redémarre le bot
 3. Vérifie que la date du défi est bien dans le **futur**
+4. En mode test, prévois le match ou la session dans 3 à 5 minutes pour voir les rappels raccourcis
 
 ---
 
@@ -363,7 +369,7 @@ C'est volontaire. L'export ne copie pas `.env` pour eviter une fuite du token Di
 - **Ne jamais copier `node_modules`** d'un PC à l'autre → toujours faire `npm install`
 - **Toujours redémarrer le terminal** après avoir installé Node.js
 - **Mode développeur Discord** : active-le pour copier les IDs facilement (**Paramètres** → **Avancé** → **Mode développeur**)
-- **Tester rapidement** : mets `SEUIL_VALIDATION: 1` dans `config.js` pour valider un défi avec un seul vote
+- **Tester rapidement** : mets `JARLBOT_MODE=test` dans `.env` ou choisis le mode Test dans le launcher
 - **Vider les données de test** : supprime `bot-state.db` ou enlève les entrées de test via le bot
 - **Le bot plante ?** Lis toujours la **première ligne** du message d'erreur, pas la dernière
 - **Token révoqué ?** Va sur le portail → Reset Token → mets à jour `.env`
@@ -387,4 +393,4 @@ C'est volontaire. L'export ne copie pas `.env` pour eviter une fuite du token Di
 
 ---
 
-*JarlBot V1.1 — Document mis à jour le 30/05/2025*
+*JarlBot V1.7.1 — Document mis à jour le 02/06/2026*

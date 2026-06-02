@@ -1,11 +1,11 @@
-# 🤖 JarlBot V1.7
+# 🤖 JarlBot V1.7.1
 
 Bot Discord open source pour gérer des **défis d'équipes**, des **sessions spéciales** et des **statistiques EVA**.
 
 Création automatique de **salons privés**, **événements Discord**, **rappels programmés** (48h en MP, 24h et 1h dans le salon), validation par votes, et nettoyage automatique après les matchs.
 
 > **Avant toute installation sur un autre serveur, crée ton propre bot Discord dans le Portail Développeurs.**
-> Crée un nouveau bot dédié à ton serveur (NE RÉUTILISE PAS un token existant). Active les intents nécessaires, récupère ton `CLIENT_ID` et ton `DISCORD_TOKEN`, puis invite ce bot sur ton serveur avec les permissions requises. Les équipes de votre salle doivent avoir un rôle à leur nom. Exemple les joueurs de ECYPS doivent pouvoir être taggués avec le @ECLYPS ou @ECY
+> Le guide complet est dans [INSTALLATION.md](INSTALLATION.md) : création de l'application, intents, permissions, rôle du bot, rôles d'équipes et export portable.
 >
 > IMPORTANT — utilise un bot que tu contrôles : ne partage pas le `DISCORD_TOKEN`, et ne tente pas d'utiliser un token tiers. Le launcher ne génère plus de lien d'invitation côté interface : crée et invite ton application depuis le portail développeur.
 
@@ -53,7 +53,7 @@ Création automatique de **salons privés**, **événements Discord**, **rappels
 - Un **bot Discord** créé sur le [Portail Développeurs Discord](https://discord.com/developers/applications)
 - Les **intents privilégiés** activés sur le bot :
   - `SERVER MEMBERS INTENT`
-  - `MESSAGE CONTENT INTENT`
+  - `MESSAGE CONTENT INTENT` conseillé
 - Une **catégorie Discord** où le bot créera les salons privés
 
 ---
@@ -68,10 +68,11 @@ Le launcher:
 - installe les dependances si `node_modules` est absent;
 - ouvre une interface locale sombre, pensée pour une prise en main rapide;
 - sauvegarde les IDs Discord dans `.env`;
-- genere le lien d'invitation du bot;
 - lance le bot et enregistre les commandes slash en une seule action;
-- reste volontairement minimal: pas de refresh EVA, pas de logs, pas d'export dans l'interface;
+- affiche les logs utiles du bot et du launcher;
 - garde une UX simple pour un administrateur non technique.
+
+La création et l'invitation du bot se font depuis le portail Discord. Suis [INSTALLATION.md](INSTALLATION.md) pour ne pas oublier les scopes, permissions et intents.
 
 Tu peux aussi le lancer en terminal:
 
@@ -121,7 +122,7 @@ Le moteur EVA v2 stocke les donnees utiles dans `eva-cache.db`:
 - joueurs major league et stats publiques via GraphQL `api.eva.gg/graphql`;
 - resume local par equipe pour repondre vite aux commandes slash.
 
-Les commandes lisent SQLite d'abord. Si une donnee manque ou depasse 24h, le bot peut rafraichir le minimum utile; le refresh complet reste reserve au worker.
+Les commandes lisent SQLite d'abord. Si une donnee manque ou depasse 24h, le moteur EVA v2 rafraichit les donnees utiles depuis le bot. Le script `npm run eva-refresh` reste disponible pour precharger ou reconstruire la base manuellement, mais il n'y a plus de worker public separe.
 
 ### 3. Configurer les variables d'environnement
 
@@ -132,24 +133,10 @@ DISCORD_TOKEN=ton_token_secret
 CLIENT_ID=id_de_ton_application
 GUILD_ID=id_de_ton_serveur
 CATEGORIE_DEFIS_ID=id_de_la_categorie_pour_les_salons
+JARLBOT_MODE=prod
 EVA_COMPETITIVE_API_BASE_URL=https://competitive.eva.gg/api
 EVA_GRAPHQL_URL=https://api.eva.gg/graphql
-EVA_ACCESS_TOKEN=ton_token_de_session_eva_optionnel
-EVA_EMAIL=ton_email_eva_optionnel
-EVA_PASSWORD=ton_mot_de_passe_eva_optionnel
 EVA_LOCAL_LEAGUES_CIRCUIT_ID=2395738311350114303
-EVA_PLAYER_MIN_MATCHES=5
-EVA_PUBLIC_PLAYER_BATCH_SIZE=8
-EVA_PUBLIC_USER_PAGE_LIMIT=0
-EVA_PUBLIC_SEED_USER_IDS=
-EVA_PUBLIC_STAT_LIMIT=0
-EVA_PUBLIC_STAT_BATCH_SIZE=10
-EVA_PUBLIC_MIN_INTERVAL_MS=250
-EVA_PUBLIC_MAX_RETRIES=4
-EVA_DATA_REFRESH_MS=43200000
-EVA_PLAYERS_CACHE_MS=1800000
-EVA_REQUEST_CACHE_MS=600000
-EVA_API_MIN_INTERVAL_MS=117
 EVA_MAJOR_TOURNAMENT_IDS=2385727403616917503
 EVA_V2_CACHE_TTL_MS=86400000
 EVA_V2_MIN_INTERVAL_MS=120
@@ -178,13 +165,12 @@ Tu devrais voir :
 npm start
 ```
 
-### Peupler la base sans lancer le bot
+### Precharger la base sans lancer le bot
 ```bash
-npm run eva-refresh:daemon
+npm run eva-refresh
 ```
 
-Ce worker remplit automatiquement `eva-cache.db` sans démarrer Discord.
-Le cycle normal est de 24h (`EVA_V2_CACHE_TTL_MS`). Pour repartir d'une base EVA propre:
+Cette commande appelle le moteur EVA v2 et remplit `eva-cache.db` sans démarrer Discord. Le bot fait aussi ce refresh au démarrage puis périodiquement. Pour repartir d'une base EVA propre:
 
 ```bash
 npm run eva-refresh:reset
@@ -202,6 +188,7 @@ L'export cree un dossier `dist/JarlBot-portable-...` avec:
 - le code du bot;
 - le launcher graphique;
 - `package.json` et `package-lock.json`;
+- `INSTALLATION.md`, `README.md` et `troubleshoot.md`;
 - la licence MIT;
 - `eva-cache.db` si elle existe;
 - `bot-state.db` si elle existe;
@@ -210,13 +197,6 @@ L'export cree un dossier `dist/JarlBot-portable-...` avec:
 L'export ne copie pas ton `.env` pour eviter de fuiter le token Discord. L'utilisateur final le remplit depuis le launcher.
 
 Le moteur EVA v2 respecte les contraintes observees de l'API Competitive: ranges de 50 elements maximum, derniere page bornee au total exact, cadence configurable et timeout par appel.
-
-### Worker public EVA
-```bash
-npm run eva-public-refresh
-```
-
-Le worker `npm run eva-public-refresh` reste disponible si tu veux enrichir le cache public, mais le chemin principal pour le bot est `npm run eva-refresh` / `npm run eva-refresh:reset`.
 
 ---
 
@@ -233,39 +213,17 @@ Le fichier `.env` reste pour les secrets, les IDs propres à un environnement, e
 
 | Paramètre | Description |
 |---|---|
-| `SEUIL_VALIDATION` | Nombre de votes ✅ requis pour valider un défi (1 en test, 3+ en prod) |
-| `PREFIXE_SALON_PRIVE` | Ancien préfixe historique. Les nouveaux salons de match utilisent `type-date-heure`, ex: `mix-01-06-2026-20-30` |
+| `JARLBOT_MODE` | `prod` par défaut, ou `test` pour valider/refuser/lancer les salons avec une seule personne et des rappels raccourcis |
 | `RAPPEL_MP_AVANT_MATCH` | Délai du rappel MP (par défaut 48h) |
 | `RAPPEL_24H_AVANT_MATCH` | Rappel dans le salon (24h avant) |
 | `RAPPEL_1H_AVANT_MATCH` | Rappel dans le salon (1h avant) |
 | `DELAI_SUPPRESSION_SALON` | Délai avant suppression du salon (48h après) |
-| `EVA_DEFAULT_LOCAL_LEAGUES_CIRCUIT_ID` | Valeur de secours pour le circuit local leagues |
-| `EVA_RATE_LIMIT_MAX_DELAY_MS` | Plafond de ralentissement automatique après un 429 |
-| `EVA_GRAPHQL_TIMEOUT_MS` | Timeout des appels GraphQL EVA |
-| `EVA_CACHE_BEST_SCORE_BONUS` | Bonus de score appliqué à un cache marqué complet |
 | `EVA_TEAM_LINEUP_DISPLAY_LIMIT` | Nombre max de joueurs affichés dans une lineup équipe |
 | `EVA_TOP_PLAYERS_LIMIT` | Nombre max de joueurs affichés par `/top` |
 | `EVA_PLANNING_WINDOW_DAYS` | Fenêtre temporelle affichée par `/planning` |
 | `EVA_COMPETITIVE_API_BASE_URL` | URL de base de l'API EVA Competitive |
 | `EVA_GRAPHQL_URL` | Endpoint GraphQL public utilisé par app.eva.gg |
 | `EVA_LOCAL_LEAGUES_CIRCUIT_ID` | Circuit Local Leagues EVA utilisé pour découvrir les tournois JARL |
-| `EVA_PLAYER_SUGGESTIONS` | Fallback manuel de pseudos `Pseudo#123456`, séparés par des virgules |
-| `EVA_PLAYER_MIN_MATCHES` | Seuil minimal de matches utilisé pour filtrer les profils trop maigres |
-| `EVA_PUBLIC_PLAYER_BATCH_SIZE` | Nombre de profils publics récupérés par requête GraphQL groupée |
-| `EVA_PUBLIC_USER_PAGE_LIMIT` | Limite optionnelle de pages pour le crawl public EVA |
-| `EVA_PUBLIC_SEED_USER_IDS` | Liste de `userId` EVA à injecter comme seeds |
-| `EVA_PUBLIC_STAT_LIMIT` | Limite de joueurs traités par le worker public |
-| `EVA_PUBLIC_STAT_BATCH_SIZE` | Taille des lots pour les stats publiques |
-| `EVA_PUBLIC_MIN_INTERVAL_MS` | Pause minimale entre deux appels EVA publics |
-| `EVA_PUBLIC_MAX_RETRIES` | Nombre de retries du worker public |
-| `EVA_ACCESS_TOKEN` | Token de session EVA optionnel pour GraphQL public |
-| `EVA_EMAIL` / `EVA_PASSWORD` | Alternative au token pour s'authentifier sur EVA |
-| `EVA_PLAYER_RESOLUTION_INTERVAL_MS` | Cadence de base entre deux résolutions de joueur |
-| `EVA_PLAYER_RESOLUTION_JITTER_MS` | Jitter ajouté à la cadence de résolution pour lisser le flux |
-| `EVA_DATA_REFRESH_MS` | Fréquence de mise à jour du snapshot local EVA (12h par défaut) |
-| `EVA_PLAYERS_CACHE_MS` | Durée des caches mémoire EVA intermédiaires |
-| `EVA_REQUEST_CACHE_MS` | Durée du cache des appels EVA unitaires |
-| `EVA_API_MIN_INTERVAL_MS` | Délai minimum entre deux appels EVA pour éviter les 429 |
 | `JARLBOT_LAUNCHER_PORT` | Port HTTP local de l'interface graphique, `3050` par défaut |
 | `JARLBOT_LAUNCHER_NO_OPEN` | Mettre `1` pour ne pas ouvrir automatiquement le navigateur |
 | `EVA_MAJOR_TOURNAMENT_IDS` | IDs des tournois major league utilisés par `/top` et `/top-equipe` |
@@ -299,7 +257,7 @@ JarlBot/
 ├── scripts/
 │   ├── launcher.js         ← Interface graphique locale d'administration
 │   ├── export-portable.js  ← Génère un dossier portable avec la DB
-│   └── eva-refresh.js      ← Worker EVA v2 24h / reset / full refresh
+│   └── eva-refresh.js      ← Préchargement / reset manuel du moteur EVA v2
 └── utils/
     └── eva-v2.js           ← Moteur EVA v2 rapide et différentiel
 ```
@@ -310,23 +268,41 @@ JarlBot/
 
 Le bot doit avoir ces permissions sur ton serveur :
 
-- ✅ Gérer les salons (créer/supprimer)
-- ✅ Gérer les événements
-- ✅ Envoyer des messages
-- ✅ Lire l'historique des messages
-- ✅ Ajouter des réactions
-- ✅ Mentionner @everyone, here et les rôles
-- ✅ Voir les salons
+- `Manage Channels` : créer/supprimer les salons privés
+- `Manage Events` : créer/supprimer les événements Discord
+- `Send Messages` et `Read Message History`
+- `Add Reactions`
+- `Mention Everyone` : mentionner les rôles d'équipes
+- `View Channels`
+
+Le rôle du bot doit être placé au-dessus des rôles qu'il doit mentionner ou gérer. Les rôles d'équipes doivent être attribués aux joueurs, car les votes de validation sont filtrés par rôle adverse.
 
 ---
 
-## 🧪 Mode test rapide
+## 🧪 Mode Test
 
-Pour tester sans attendre les votes :
-1. Dans `config.js`, mets `SEUIL_VALIDATION: 1`
-2. Lance un défi avec `/mix` ou `/scrim`
-3. Réagis avec ✅ → le défi est validé immédiatement
-4. Réagis avec ❌ → le défi peut être refusé si le seuil de votes est atteint
+Le mode test se règle dans le launcher avec **Mode de fonctionnement > Test**, ou dans `.env` :
+
+```env
+JARLBOT_MODE=test
+```
+
+En mode test :
+- un seul vote ✅ valide un `/mix` ou `/scrim`, sans filtrage par rôle adverse;
+- un seul vote ❌ refuse un `/mix` ou `/scrim`;
+- un `/free` se lance dès qu'une personne participe;
+- une `/session` se lance dès qu'une personne clique sur **Je participe**;
+- les rappels sont raccourcis pour être testables: MP à 2 minutes, salon à 90 secondes et 30 secondes avant l'horaire, nettoyage 5 minutes après.
+
+Procédure de test conseillée :
+1. Mets `JARLBOT_MODE=test`, puis relance le bot.
+2. Crée un `/mix` prévu dans 3 à 5 minutes, puis réagis avec ✅. Vérifie le salon privé, l'événement Discord et le bouton d'annulation.
+3. Crée un autre `/mix`, puis réagis avec ❌. Vérifie que le défi est refusé.
+4. Crée un `/free`, réagis avec ✅. Vérifie le salon privé et le rappel MP avec ⏰.
+5. Crée une `/session` avec `joueurs: 2`, clique seul sur **Je participe**. En mode test, elle doit quand même créer le salon.
+6. Clique sur **Annuler le match** dans un salon privé, puis reclique pour confirmer la suppression.
+
+Repasse ensuite en `JARLBOT_MODE=prod`. En prod, la validation redevient stricte: seuls les membres du rôle adverse sont comptés, avec un seuil automatique de 1 à 4 votes selon le nombre de membres du rôle.
 
 ---
 
@@ -352,8 +328,7 @@ MIT — logiciel open source, libre d'utilisation, modification et redistributio
 
 - Les données de défis et sessions sont stockées dans `bot-state.db`
 - Le cache EVA persistant est dans `eva-cache.db` ; si tu déplaces le bot sur un autre PC, copie aussi ce fichier pour garder l'historique local
-- Les commandes EVA utilisent un mode hybride: lecture locale d'abord, refresh si la donnée est absente ou plus vieille que 24h
-- Le worker `npm run eva-public-refresh` peut tourner à part du bot Discord
+- Les commandes EVA utilisent un mode hybride: lecture locale d'abord, refresh intégré au moteur si la donnée est absente ou plus vieille que 24h
 - Le cache joueurs ne contient pas tous les comptes EVA, mais les joueurs compétitifs dont le profil public a pu être résolu
 - Les constantes que tu veux ajuster à la main doivent rester dans `config.js`, pas éparpillées dans le code
 - Les tâches programmées (rappels, nettoyage) sont **persistantes** : si le bot redémarre, elles sont reprogrammées au boot
