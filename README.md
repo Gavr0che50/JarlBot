@@ -1,129 +1,159 @@
-# JarlBot V1.7.5 - Finale
+# JarlBot
 
-JarlBot est un bot Discord open source pour organiser des matchs EVA, ouvrir des sessions communautaires et consulter des donnees EVA mises en cache localement.
+Bot Discord open source pour organiser des matchs EVA, ouvrir des sessions communautaires et consulter les données compétitives EVA depuis un cache local.
 
-Le README donne la vue d'ensemble du projet. Pour installer, configurer Discord, tester le bot ou regler une panne, utilise les guides dedies :
+[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D24-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![discord.js](https://img.shields.io/badge/discord.js-v14-5865F2?logo=discord&logoColor=white)](https://discord.js.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+## Aperçu
+
+JarlBot aide une communauté EVA à gérer les rendez-vous directement depuis Discord :
+
+- Organisation de matchs avec `/mix`, `/scrim` et `/free`.
+- Sessions communautaires administrées avec `/session`.
+- Salons privés créés automatiquement quand une proposition est validée.
+- Événements Discord, rappels, annulation confirmée et nettoyage automatique.
+- Statistiques EVA, classements, tops et tournois via un cache SQLite local.
+- Launcher web local pour configurer, lancer, arrêter et surveiller le bot.
+
+## Installation rapide
+
+Choisis le guide adapté à ta machine :
 
 - [Installation Windows](INSTALLATION-WINDOWS.md)
 - [Installation Linux](INSTALLATION-LINUX.md)
 
-## Ce que fait le bot
+Version courte :
 
-JarlBot gere trois familles d'usage :
+```bash
+git clone https://github.com/Gavr0che50/JarlBot.git
+cd JarlBot
+npm install
+cp .env.example .env
+npm run deploy-commands
+npm start
+```
 
-- Organisation de matchs : `/mix`, `/scrim` et `/free`.
-- Sessions communautaires : `/session`, inscriptions par boutons et creation de salon quand le quota est atteint.
-- Donnees EVA : stats joueurs, stats equipes, classements locaux, top major league et tournois locaux.
+Sous Windows, remplace `cp .env.example .env` par :
 
-Les fonctionnalites ci-dessous ont ete reverifiees dans `deploy-commands.js`, `index.js`, `config.js`, `utils/eva-v2.js`, `utils/storage.js` et les scripts du dossier `scripts/`.
+```powershell
+copy .env.example .env
+```
+
+Le fichier `.env` doit au minimum contenir :
+
+```env
+DISCORD_TOKEN=ton-token-discord
+CLIENT_ID=id-application-discord
+GUILD_ID=id-serveur-discord
+CATEGORIE_DEFIS_ID=id-categorie-salons
+JARLBOT_MODE=prod
+```
 
 ## Commandes Discord
 
-| Commande | Role |
-|---|---|
-| `/help` | Affiche le guide rapide integre au bot. |
-| `/ping` | Verifie que le bot repond. |
-| `/mix` | Cree une proposition de match mix entre deux roles d'equipe. |
-| `/scrim` | Cree une proposition de scrim entre deux roles d'equipe. |
-| `/free` | Ouvre une session libre avec nombre de joueurs et niveau attendu. |
-| `/renfort` | Donne acces a un joueur dans un salon prive de match ou de session. |
-| `/session` | Propose une session speciale. Commande reservee aux administrateurs Discord. |
-| `/planning` | Liste les evenements Discord a venir dans la fenetre configuree. |
-| `/stat` | Affiche les stats EVA d'un joueur competitif public indexe. |
-| `/stat-equipe` | Affiche salle, ligue, points, classement et roster d'une equipe EVA. |
-| `/classement` | Affiche les classements locaux d'une ville ou salle EVA. |
-| `/top` | Affiche le top joueurs de la major league avec KDA et tendance. |
-| `/top-equipe` | Affiche le top equipes de la major league avec points, bilan et differentiel. |
-| `/tournoi` | Affiche les prochains tournois locaux EVA d'un site et les rencontres publiees. |
+Les commandes disponibles sont documentées ici : [COMMANDES.md](COMMANDES.md).
 
-Les commandes `/stat`, `/stat-equipe`, `/classement` et `/tournoi` utilisent l'autocompletion quand le cache EVA contient deja les donnees.
+Résumé :
 
-## Matchs et salons prives
+| Commande | Usage |
+| --- | --- |
+| `/help` | Affiche l'aide dans Discord. |
+| `/ping` | Vérifie que le bot répond. |
+| `/mix` | Propose un match mix entre deux équipes. |
+| `/scrim` | Propose un scrim entre deux équipes. |
+| `/free` | Propose une session ouverte à plusieurs joueurs. |
+| `/renfort` | Invite un joueur dans un salon privé. |
+| `/session` | Crée une session spéciale réservée aux administrateurs. |
+| `/stat`, `/stat-equipe` | Affichent les statistiques EVA. |
+| `/classement`, `/top`, `/top-equipe`, `/tournoi` | Consultent les données compétitives EVA. |
+| `/planning` | Affiche les rencontres et sessions prévues. |
 
-Pour `/mix` et `/scrim`, l'utilisateur doit posseder le role indique dans `mon-equipe`. Le bot publie une proposition et attend les reactions de l'equipe adverse :
+## Fonctionnement des matchs
 
-- reaction positive pour accepter ;
-- reaction negative pour refuser ;
-- en production, les votes sont comptes uniquement chez les membres du role adverse ;
-- le seuil est de 1 a 4 votes selon le nombre de membres du role adverse ;
+Pour `/mix` et `/scrim`, le joueur doit posséder le rôle Discord indiqué dans `mon-equipe`. Le bot publie une proposition, puis attend les réactions de l'équipe adverse :
+
+- réaction positive : acceptation ;
+- réaction négative : refus ;
+- en production, seuls les membres du rôle adverse sont comptés ;
+- le seuil varie de 1 à 4 votes selon la taille du rôle adverse ;
 - en mode test, un seul vote suffit.
 
-Une fois le match valide, JarlBot cree :
+Quand le match est validé, JarlBot crée :
 
-- un salon texte prive dans la categorie configuree ;
-- un evenement Discord externe ;
-- un message de bienvenue avec reaction horloge pour demander un rappel MP ;
-- un bouton d'annulation qui demande une confirmation au second clic.
-
-Les salons de match suivent le format `type-equipe1-vs-equipe2-date`. Les frees et sessions suivent le format `type-date-heure`.
+- un salon texte privé dans la catégorie configurée ;
+- un événement Discord externe ;
+- un message de bienvenue ;
+- une réaction de rappel privé ;
+- un bouton d'annulation avec confirmation au second clic.
 
 ## Frees et sessions
 
-`/free` cree une proposition ouverte a plusieurs joueurs. L'auteur est ajoute automatiquement aux participants, puis les autres joueurs rejoignent par reaction positive. En production, le salon est cree quand le nombre demande est atteint. En mode test, un participant suffit.
+`/free` crée une proposition ouverte. L'auteur est inscrit automatiquement, puis les joueurs rejoignent avec la réaction positive. Le salon privé est créé quand le quota est atteint.
 
-`/session` est reservee aux administrateurs. Les types disponibles dans les slash commands sont `Nocturne`, `Matinale` et `Evenement special`. Les joueurs utilisent les boutons `Je participe` et `Me retirer`; le bot cree le salon prive quand le quota est atteint.
-
-## Rappels et nettoyage
-
-Les taches sont programmees avec `node-schedule` et les donnees de matchs/sessions sont conservees dans `bot-state.db`, ce qui permet de reprogrammer les taches au redemarrage.
-
-Pour les matchs :
-
-- rappel MP opt-in 48h avant via la reaction horloge ;
-- rappel dans le salon 24h avant ;
-- rappel dans le salon 1h avant ;
-- suppression automatique du salon et de l'evenement 48h apres l'horaire.
-
-Pour les sessions :
-
-- rappel MP opt-in 48h avant via la reaction horloge ;
-- duree d'evenement de 3h en production.
-
-En mode test, ces delais sont raccourcis dans `config.js`.
+`/session` est réservée aux administrateurs. Les types proposés sont `Nocturne`, `Matinale` et `Événement spécial`. Les joueurs utilisent les boutons `Je participe` et `Me retirer`; le salon privé apparaît quand la session est complète.
 
 ## Cache EVA
 
-Le moteur EVA utilise `node:sqlite`, l'API Competitive EVA et le GraphQL public d'app.eva.gg. Les donnees sont stockees dans `eva-cache.db`.
+JarlBot utilise `node:sqlite`, l'API Competitive EVA et le GraphQL public d'app.eva.gg. Les données EVA sont stockées dans `eva-cache.db`, ignoré par Git.
 
 Le cache contient notamment :
 
 - villes et salles EVA ;
+- équipes et rosters compétitifs ;
+- statistiques joueurs et équipes ;
 - classements locaux ;
-- equipes et rosters ;
-- joueurs competitifs indexes ;
-- stats publiques des joueurs major league ;
-- stats d'equipes major league ;
-- tournois locaux EVA et rencontres publiees.
+- tournois EVA.
 
-Au demarrage, si `eva-cache.db` existe deja, JarlBot ne lance pas de refresh EVA immediat. Si la base n'existe pas, il lance un import initial complet. Ensuite, un refresh periodique tourne selon `EVA_V2_CACHE_TTL_MS`, 12h par defaut.
+Commandes utiles :
 
-Pendant un import ou un refresh, les commandes EVA repondent rapidement qu'une mise a jour est en cours.
+```bash
+npm run eva-refresh
+npm run eva-refresh:full
+npm run eva-refresh:reset
+```
+
+Au premier lancement sans `eva-cache.db`, l'import initial peut prendre du temps. Les commandes EVA indiquent qu'une mise à jour est en cours jusqu'à ce que le cache soit prêt.
+
+## Launcher local
+
+Le launcher démarre une interface web locale, par défaut sur `http://localhost:3050`.
+
+```bash
+npm run launcher
+```
+
+Il permet de :
+
+- vérifier la configuration ;
+- modifier `.env` depuis une interface locale ;
+- lancer ou arrêter le bot ;
+- déployer les slash commands ;
+- suivre les logs ;
+- déclencher un refresh EVA.
+
+Sous Windows, tu peux aussi lancer `JarlBot Launcher.cmd`. Sous Linux, tu peux utiliser `./launcher.sh`.
 
 ## Scripts npm
 
-| Script | Role |
-|---|---|
-| `npm start` | Lance le bot Discord. |
-| `npm run launcher` | Lance l'interface locale du launcher. |
-| `npm run deploy-commands` | Enregistre les slash commands sur le serveur configure. |
-| `npm run eva-refresh` | Force un refresh EVA manuel. |
-| `npm run eva-refresh:full` | Force un refresh EVA complet. |
-| `npm run eva-refresh:reset` | Vide les tables EVA puis reconstruit le cache. |
-| `npm run export-portable` | Genere un dossier portable dans `dist/`. |
-| `npm run pack:dist` | Genere un paquet npm `.tgz` dans `dist/`. |
-| `npm test` | Execute les controles syntaxiques declares dans `npm run check`. |
+| Script | Description |
+| --- | --- |
+| `npm start` | Lance le bot. |
+| `npm run launcher` | Lance le launcher web local. |
+| `npm run deploy-commands` | Enregistre les slash commands sur le serveur Discord configuré. |
+| `npm run eva-refresh` | Met à jour le cache EVA. |
+| `npm run eva-refresh:full` | Force un refresh EVA plus complet. |
+| `npm run eva-refresh:reset` | Supprime puis reconstruit le cache EVA. |
+| `npm run check` | Vérifie la syntaxe des fichiers JavaScript. |
+| `npm test` | Lance la vérification de syntaxe. |
 
-## Configuration
-
-`config.js` contient les constantes metier et les valeurs par defaut non sensibles : delais, limites d'affichage, couleurs, messages, endpoints EVA et mode de fonctionnement.
-
-`.env` contient les secrets et les IDs propres a l'environnement : token Discord, application, serveur, categorie de salons, mode local et surcharges EVA. `.env` ne doit jamais etre partage ni commite.
-
-## Structure
+## Structure du projet
 
 ```text
 JarlBot/
 |-- README.md
+|-- COMMANDES.md
 |-- INSTALLATION-WINDOWS.md
 |-- INSTALLATION-LINUX.md
 |-- troubleshoot.md
@@ -135,18 +165,23 @@ JarlBot/
 |-- launcher.sh
 |-- scripts/
 |   |-- launcher.js
-|   |-- eva-refresh.js
-|   `-- export-portable.js
+|   `-- eva-refresh.js
 `-- utils/
     |-- eva-v2.js
     `-- storage.js
 ```
 
-Bases locales ignorees par Git :
+Fichiers locaux ignorés par Git :
 
-- `bot-state.db` : defis et sessions programmes ;
+- `.env` : secrets et configuration locale ;
+- `bot-state.db` : défis et sessions programmés ;
 - `eva-cache.db` : cache EVA ;
-- `logs/` : logs du launcher, du bot et des refreshs.
+- `logs/` : logs du launcher, du bot et des refreshs ;
+- `node_modules/` et `dist/`.
+
+## Dépannage
+
+Consulte [troubleshoot.md](troubleshoot.md) pour les erreurs courantes : token invalide, intents Discord, permissions, slash commands absentes, cache EVA, port du launcher, version Node.js.
 
 ## Licence
 
