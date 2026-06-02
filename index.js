@@ -1,5 +1,5 @@
 // ========================================
-// 🤖 JarlBot — V1.7.3
+// 🤖 JarlBot — V1.7.4
 // Bot de gestion de défis d'équipes + sessions
 // ========================================
 
@@ -52,6 +52,7 @@ const client = new Client({
 });
 
 const confirmationsAnnulationMatch = new Map();
+let evaAutocompleteWarmupPromise = null;
 
 // ========================================
 // 🛠️ Utilitaires généraux
@@ -885,11 +886,21 @@ function limiterMessageDiscord(content, maxLength = 1900) {
   return `${content.slice(0, maxLength - 20)}\n... (tronque)`;
 }
 
+function lancerWarmupEvaAutocomplete() {
+  if (evaAutocompleteWarmupPromise) return;
+  evaAutocompleteWarmupPromise = ensureEvaV2Fresh()
+    .catch(err => {
+      console.error('❌ Warmup autocomplete EVA en erreur :', err.message);
+    })
+    .finally(() => {
+      evaAutocompleteWarmupPromise = null;
+    });
+}
+
 async function gererAutocompleteStat(interaction) {
   const focused = interaction.options.getFocused().toLowerCase();
 
   try {
-    await ensureEvaV2Fresh();
     const choices = searchPlayers(focused, 25)
       .map(player => ({
         name: tronquerChoixAutocomplete(
@@ -898,9 +909,11 @@ async function gererAutocompleteStat(interaction) {
         value: player.eva_username || player.name,
       }));
 
+    if (!choices.length) lancerWarmupEvaAutocomplete();
     await interaction.respond(choices);
   } catch (err) {
     console.error('❌ Erreur autocomplete /stat :', err);
+    lancerWarmupEvaAutocomplete();
     await interaction.respond([]).catch(() => {});
   }
 }
@@ -913,7 +926,6 @@ async function gererAutocompleteStatEquipe(interaction) {
   const focused = interaction.options.getFocused().toLowerCase();
 
   try {
-    await ensureEvaV2Fresh();
     const choices = searchTeams(focused, 25)
       .map(team => ({
         name: tronquerChoixAutocomplete(
@@ -922,9 +934,11 @@ async function gererAutocompleteStatEquipe(interaction) {
         value: team.name,
       }));
 
+    if (!choices.length) lancerWarmupEvaAutocomplete();
     await interaction.respond(choices);
   } catch (err) {
     console.error('❌ Erreur autocomplete /stat-equipe :', err);
+    lancerWarmupEvaAutocomplete();
     await interaction.respond([]).catch(() => {});
   }
 }
@@ -933,7 +947,6 @@ async function gererAutocompleteClassement(interaction) {
   const focused = interaction.options.getFocused().toLowerCase();
 
   try {
-    await ensureEvaV2Fresh();
     const choices = searchLocations(focused, 25)
       .map(standing => ({
         name: tronquerChoixAutocomplete(
@@ -942,9 +955,11 @@ async function gererAutocompleteClassement(interaction) {
         value: standing.name || standing.ranking_name,
       }));
 
+    if (!choices.length) lancerWarmupEvaAutocomplete();
     await interaction.respond(choices);
   } catch (err) {
     console.error('❌ Erreur autocomplete /classement :', err);
+    lancerWarmupEvaAutocomplete();
     await interaction.respond([]).catch(() => {});
   }
 }

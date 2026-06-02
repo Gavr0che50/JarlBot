@@ -394,4 +394,4 @@ C'est volontaire. L'export ne copie pas `.env` pour eviter une fuite du token Di
 
 ---
 
-*JarlBot V1.7.3 — Document mis à jour le 02/06/2026*
+*JarlBot V1.7.4 — Document mis à jour le 02/06/2026*
