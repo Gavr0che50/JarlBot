@@ -29,6 +29,8 @@ Création automatique de **salons privés**, **événements Discord**, **rappels
   - 1h avant → message dans le salon privé
 - Nettoyage automatique du salon 48h après le match
 
+**TOUT LES TIMINGS SONT MODIFIABLES DANS LE CONFIG.JS**
+
 ### 🎮 Sessions spéciales
 - **`/session`** — Propose une session (Nocturne, Matinale, Événement) avec descriptif obligatoire
 - Inscription via boutons **Je participe / Quitter**
