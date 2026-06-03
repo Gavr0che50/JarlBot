@@ -907,43 +907,160 @@ function formatNumber(value) {
 }
 
 const POSITIVE_EMOJIS = ['🎉', '🔥', '💪', '🏆', '🚀', '✨'];
-const NEGATIVE_EMOJIS = ['😅', '🤦', '🫠', '🧨', '🐌', '🥴'];
+const NEGATIVE_EMOJIS = ['😅', '🤦', '🫠', '🧨', '🥴'];
+
+const PLAYER_STAT_PHRASES = {
+  topKills: [
+    'Meilleur rythme de kills de son equipe, le viseur a clairement chauffe.',
+    'Plus gros debit de kills de son equipe. On range le chargeur, il fume encore.',
+    'Leader au rythme de kills dans son equipe. La discretion attendra la prochaine saison.'
+  ],
+  tiedTopKills: [
+    'Ex aequo au rythme de kills dans son equipe. La couronne est partagee, mais elle brille quand meme.',
+    'Dans le peloton de tete au rythme de kills. Pas seul sur le trone, mais bien installe.'
+  ],
+  topAssists: [
+    'Top assists par match de son equipe, le GPS des frags est bien regle.',
+    'Meilleur distributeur d assists au rythme par match. Service compris, sourire en option.',
+    'Leader au rythme d assists. Il ne vole pas la lumiere, il branche les projecteurs.'
+  ],
+  tiedTopAssists: [
+    'Ex aequo aux assists. L esprit d equipe est tellement present qu il partage meme le podium.',
+    'Dans le haut du tableau aux assists. Les copains disent merci, parfois.'
+  ],
+  topKda: [
+    'Meilleur KDA de son equipe. Propre, efficace, presque insolent.',
+    'Top KDA de son equipe. Il tombe peu et fait tomber assez de monde.',
+    'Le KDA le plus solide de son equipe. On appelle ca du travail bien range.'
+  ],
+  topDamage: [
+    'Plus gros degats par match de son equipe. Les murs aussi ont peut-etre demande une pause.',
+    'Leader au rythme des degats. Ce n est plus une feuille de stats, c est une facture de reparations.'
+  ],
+  topStreak: [
+    'Meilleure serie de kills de son equipe. Petit moment rouleau compresseur.',
+    'La plus belle serie de kills du groupe. Quand ca part, ca part.'
+  ],
+  topWins: [
+    'Meilleur taux de victoires de son equipe. Il connait bien le bouton "encore une".',
+    'Leader au rythme des victoires. Pas toujours glamour, souvent efficace.'
+  ],
+  lowDeaths: [
+    'Peu de morts compare a l equipe. Le bouton respawn prend des vacances.',
+    'Il tombe moins que les autres. Strategie, prudence, ou pacte secret avec le terrain.'
+  ],
+  manyDeaths: [
+    'Le compteur de morts a pris un abonnement premium. Il reste de la marge pour remonter.',
+    'Beaucoup de respawns cette saison. Courage, au moins il connait bien le chemin du retour.',
+    'Ca pique cote morts, mais une mauvaise stat, ca se transforme aussi en objectif.'
+  ],
+  lowImpact: [
+    'Les stats sont timides pour l instant. Pas grave, meme les grandes saisons commencent par un echauffement.',
+    'Impact discret cette saison. Le mode economie d energie est peut-etre active.',
+    'Pas encore de stat qui explose, mais il reste de la place pour ecrire la suite.'
+  ],
+  rising: [
+    'Progression visible, continue comme ca !',
+    'Ca monte tranquillement. Pas besoin de fanfare, le tableau parle deja.',
+    'La forme revient, et elle n a pas l air d etre juste de passage.'
+  ],
+  falling: [
+    'Ouille, cette saison est un peu compliquee...',
+    'Petite baisse de regime. Rien d irreparable, mais le clavier a le droit de transpirer.',
+    'La courbe descend un peu. Moment parfait pour voler un round et vexer les statistiques.'
+  ],
+  stable: [
+    'Saison stable : pas de feu d artifice, pas de catastrophe, juste du solide.',
+    'Performance reguliere. Ce n est pas spectaculaire, mais ca tient debout.',
+    'Stats stables. Le calme avant une future dinguerie, evidemment.'
+  ]
+};
 
 function randomEmoji(list) {
   return list[Math.floor(Math.random() * list.length)];
 }
 
+function randomItem(list) {
+  return list[Math.floor(Math.random() * list.length)];
+}
+
+function formatPlayerPhrase(emojiList, phraseList) {
+  return `${randomEmoji(emojiList)} ${randomItem(phraseList)}`;
+}
+
 function buildPlayerStatPhrase(data, teamPlayers = []) {
   if (!data || !data.current || !teamPlayers.length) return null;
-  const self = teamPlayers.find(player =>
+  const matchedPlayer = teamPlayers.find(player =>
     String(player.playerId) === String(data.playerId) ||
     player.eva_username === data.username ||
     player.name === data.name
   );
-  if (!self) return null;
+  if (!matchedPlayer) return null;
 
-  const value = currentValue => Number(self.current[currentValue] || 0);
-  const isTop = stat => teamPlayers.every(player => Number(player.current[stat] || 0) <= value(stat));
+  const self = {
+    ...matchedPlayer,
+    current: data.current || matchedPlayer.current
+  };
 
-  if (self.current.kills && isTop('kills')) {
-    return `${randomEmoji(POSITIVE_EMOJIS)} Joueur ayant le plus de kills de son équipe !`;
-  }
-  if (self.current.assists && isTop('assists')) {
-    return `${randomEmoji(POSITIVE_EMOJIS)} Joueur ayant le plus d'assists de son équipe !`;
-  }
-  if (self.current.kda && isTop('kda')) {
-    return `${randomEmoji(POSITIVE_EMOJIS)} Meilleur KDA de son équipe !`;
-  }
-  if (self.current.deaths && isTop('deaths') && Number(self.current.kda || 0) < 1) {
-    return `${randomEmoji(NEGATIVE_EMOJIS)} Trop de morts cette saison, ça pique...`;
-  }
-  if (data.trend === 'hausse') {
-    return `${randomEmoji(POSITIVE_EMOJIS)} Progression visible, continue comme ça !`;
-  }
-  if (data.trend === 'baisse') {
-    return `${randomEmoji(NEGATIVE_EMOJIS)} Ouille, cette saison est un peu compliquée...`;
-  }
-  return null;
+  const rankedPlayers = teamPlayers.filter(player => Number(player.current?.gameCount || 0) > 0);
+  const canCompareTeam = rankedPlayers.length >= 2;
+  const readBaseStat = (player, stat) => Number(player.current?.[stat] || 0);
+  const readStat = (player, stat) => {
+    const games = readBaseStat(player, 'gameCount');
+    if (stat === 'killsPerGame') return games > 0 ? readBaseStat(player, 'kills') / games : 0;
+    if (stat === 'assistsPerGame') return games > 0 ? readBaseStat(player, 'assists') / games : 0;
+    if (stat === 'deathsPerGame') return games > 0 ? readBaseStat(player, 'deaths') / games : 0;
+    if (stat === 'damagePerGame') return games > 0 ? readBaseStat(player, 'inflictedDamage') / games : 0;
+    if (stat === 'winRate') return games > 0 ? readBaseStat(player, 'wins') / games : 0;
+    return readBaseStat(player, stat);
+  };
+  const readSelfStat = stat => readStat(self, stat);
+  const getRank = (stat, direction = 'desc') => {
+    const own = readSelfStat(stat);
+    const values = rankedPlayers.map(player => readStat(player, stat));
+    if (!values.length) {
+      return {
+        own,
+        isTop: false,
+        isUniqueTop: false,
+        isTiedTop: false
+      };
+    }
+    const target = direction === 'asc' ? Math.min(...values) : Math.max(...values);
+    const tiedCount = values.filter(candidate => candidate === target).length;
+    return {
+      own,
+      isTop: own === target,
+      isUniqueTop: own === target && tiedCount === 1,
+      isTiedTop: own === target && tiedCount > 1
+    };
+  };
+
+  const games = readSelfStat('gameCount');
+  const kills = getRank('killsPerGame');
+  const assists = getRank('assistsPerGame');
+  const kda = getRank('kda');
+  const damage = getRank('damagePerGame');
+  const streak = getRank('bestKillStreak');
+  const wins = getRank('winRate');
+  const deaths = getRank('deathsPerGame');
+  const lowDeaths = getRank('deathsPerGame', 'asc');
+
+  if (canCompareTeam && kda.own >= 1.2 && kda.isUniqueTop) return formatPlayerPhrase(POSITIVE_EMOJIS, PLAYER_STAT_PHRASES.topKda);
+  if (canCompareTeam && kills.own > 0 && kills.isUniqueTop) return formatPlayerPhrase(POSITIVE_EMOJIS, PLAYER_STAT_PHRASES.topKills);
+  if (canCompareTeam && kills.own > 0 && kills.isTiedTop) return formatPlayerPhrase(POSITIVE_EMOJIS, PLAYER_STAT_PHRASES.tiedTopKills);
+  if (canCompareTeam && assists.own > 0 && assists.isUniqueTop) return formatPlayerPhrase(POSITIVE_EMOJIS, PLAYER_STAT_PHRASES.topAssists);
+  if (canCompareTeam && assists.own > 0 && assists.isTiedTop) return formatPlayerPhrase(POSITIVE_EMOJIS, PLAYER_STAT_PHRASES.tiedTopAssists);
+  if (canCompareTeam && damage.own > 0 && damage.isUniqueTop) return formatPlayerPhrase(POSITIVE_EMOJIS, PLAYER_STAT_PHRASES.topDamage);
+  if (canCompareTeam && streak.own >= 3 && streak.isUniqueTop) return formatPlayerPhrase(POSITIVE_EMOJIS, PLAYER_STAT_PHRASES.topStreak);
+  if (canCompareTeam && readSelfStat('wins') > 0 && wins.isUniqueTop) return formatPlayerPhrase(POSITIVE_EMOJIS, PLAYER_STAT_PHRASES.topWins);
+  if (canCompareTeam && games >= 3 && lowDeaths.own > 0 && lowDeaths.isUniqueTop && kda.own >= 1) return formatPlayerPhrase(POSITIVE_EMOJIS, PLAYER_STAT_PHRASES.lowDeaths);
+  if (canCompareTeam && games >= 3 && deaths.own > 0 && deaths.isUniqueTop && kda.own < 1) return formatPlayerPhrase(NEGATIVE_EMOJIS, PLAYER_STAT_PHRASES.manyDeaths);
+  if (games >= 3 && kills.own === 0 && assists.own === 0) return formatPlayerPhrase(NEGATIVE_EMOJIS, PLAYER_STAT_PHRASES.lowImpact);
+  if (data.trend === 'hausse') return formatPlayerPhrase(POSITIVE_EMOJIS, PLAYER_STAT_PHRASES.rising);
+  if (data.trend === 'baisse') return formatPlayerPhrase(NEGATIVE_EMOJIS, PLAYER_STAT_PHRASES.falling);
+  return formatPlayerPhrase(POSITIVE_EMOJIS, PLAYER_STAT_PHRASES.stable);
+
 }
 
 function formatTrend(value) {

@@ -102,8 +102,10 @@ Discord ne permet pas d'afficher facilement un badge different devant chaque lig
 Details importants :
 
 - le KDA affiche est celui de la saison en cours ;
-- les statistiques all-time sont aussi recuperees, mais servent surtout au total de matchs affiche en complement ;
+- les statistiques all-time sont aussi recuperees, mais servent surtout au total de matchs affiche ;
 - si les stats ne sont pas encore en cache, JarlBot tente une recuperation a la demande ;
+- la phrase de performance compare le joueur aux coequipiers publics disponibles, apres hydratation des stats manquantes du roster ;
+- les comparaisons de kills, assists, degats, morts et victoires sont faites au rythme par match quand c'est pertinent ;
 - si le profil EVA est prive ou introuvable cote API publique, JarlBot affiche une carte avec les infos competitives connues et le badge d'equipe si possible.
 
 ### `/stat-equipe`

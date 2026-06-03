@@ -1649,23 +1649,43 @@ async function getEvaPlayerStats(query) {
   };
 }
 
-function getTeamPlayerStats(teamId) {
+async function getTeamPlayerStats(teamId) {
   if (!teamId) return [];
   try {
-    const rows = openDb().prepare(`
-      SELECT player_user_id, name, eva_username, current_stats
+    const db = openDb();
+    const selectPlayers = () => db.prepare(`
+      SELECT player_user_id, name, eva_username, current_stats, stats_error, stats_retry_after
       FROM eva_v2_players
-      WHERE team_id = ? AND current_stats IS NOT NULL
+      WHERE team_id = ?
     `).all(teamId);
+
+    let rows = selectPlayers();
+    let hydrated = 0;
+
+    for (const player of rows) {
+      if (player.current_stats) continue;
+      if (player.stats_error && Number(player.stats_retry_after || 0) > now()) continue;
+
+      try {
+        await hydratePlayerStats(player);
+        hydrated += 1;
+      } catch (err) {
+        recordPlayerStatsError(player, err);
+        console.warn(`[EVA-V2] team player stats skipped for ${player.name}: ${err.message}`);
+      }
+    }
+
+    if (hydrated > 0) rows = selectPlayers();
 
     return rows
       .map(player => ({
         playerId: player.player_user_id,
         name: player.name,
         eva_username: player.eva_username,
+        hasCurrentStats: Boolean(player.current_stats),
         current: safeJsonParse(player.current_stats, {}),
       }))
-      .filter(player => player.current && Number(player.current.gameCount || 0) > 0);
+      .filter(player => player.current);
   } catch (err) {
     console.error('getTeamPlayerStats error:', err.message);
     return [];

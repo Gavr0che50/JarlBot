@@ -123,6 +123,8 @@ Au premier lancement sans `eva-cache.db`, l'import initial peut prendre plusieur
 
 `/stat` utilise les profils publics EVA. Le KDA affiche est celui de la saison en cours. Le total all-time est recupere aussi, mais sert surtout au nombre de matchs total affiche en complement.
 
+La petite phrase de performance compare le joueur aux coequipiers dont les stats publiques sont disponibles. JarlBot hydrate les stats manquantes du roster avant de comparer, privilegie le KDA, puis compare les volumes au rythme par match pour eviter de recompenser ou tacler un joueur uniquement parce qu'il a plus ou moins joue.
+
 Si un profil est prive ou introuvable cote API publique EVA, JarlBot affiche tout de meme une carte propre avec les informations competitives connues et le badge d'equipe quand il est disponible.
 
 ## Launcher local
