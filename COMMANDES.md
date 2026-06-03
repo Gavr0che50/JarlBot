@@ -30,7 +30,7 @@ L'auteur doit posseder le role `mon-equipe`. L'equipe adverse valide ou refuse a
 
 Cree une proposition de scrim entre deux equipes.
 
-Les options sont les memes que `/mix`, avec en plus un niveau attendu quand la commande le propose.
+Les options sont les memes que `/mix`.
 
 ### `/free`
 
