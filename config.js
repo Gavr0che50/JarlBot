@@ -1,5 +1,5 @@
 // ========================================
-// 🔧 CONFIGURATION DU BOT — JarlBot V1.7.5
+// 🔧 CONFIGURATION DU BOT — JarlBot V1.8.0
 // Réglages métier et valeurs par défaut non sensibles.
 // ========================================
 

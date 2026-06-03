@@ -1,103 +1,138 @@
-# Commandes Discord
+# Commandes JarlBot
 
-Cette page décrit les slash commands exposées par JarlBot.
+Cette page resume les commandes slash disponibles dans Discord. Les commandes EVA utilisent l'autocompletion quand le cache local connait des joueurs, equipes, villes ou sites.
 
 ## Utilitaires
 
 | Commande | Description |
 | --- | --- |
 | `/help` | Affiche le guide des commandes dans Discord. |
-| `/ping` | Vérifie que le bot répond. |
-| `/planning` | Affiche les matchs et sessions planifiés. |
+| `/ping` | Verifie que le bot repond. |
+| `/planning` | Affiche les matchs, sessions et evenements Discord prevus. |
 
 ## Matchs EVA
 
 ### `/mix`
 
-Crée une proposition de match mix entre deux équipes.
+Cree une proposition de match mix entre deux equipes.
 
 Options principales :
 
-- `nombre-matchs` : nombre de matchs à jouer, de 1 à 10.
-- `date` : date au format `JJ/MM/AAAA`.
-- `heure` : heure au format `HH:MM`.
-- `mon-equipe` : rôle Discord de l'équipe qui propose.
-- `adversaire` : rôle Discord de l'équipe défiée.
+- `nombre-matchs` : nombre de matchs a jouer, de 1 a 10 ;
+- `date` : format `JJ/MM/AAAA` ;
+- `heure` : format `HH:MM` ;
+- `mon-equipe` : role Discord de ton equipe ;
+- `adversaire` : role Discord de l'equipe defiee.
 
-Le joueur qui lance la commande doit posséder le rôle indiqué dans `mon-equipe`.
+L'auteur doit posseder le role `mon-equipe`. L'equipe adverse valide ou refuse avec les reactions Discord. Une fois valide, JarlBot cree le salon prive, l'evenement Discord, les rappels et le bouton d'annulation.
 
 ### `/scrim`
 
-Crée une proposition de scrim entre deux équipes.
+Cree une proposition de scrim entre deux equipes.
 
-Options principales :
-
-- `nombre-matchs` : nombre de matchs à jouer, de 1 à 10.
-- `date` : date au format `JJ/MM/AAAA`.
-- `heure` : heure au format `HH:MM`.
-- `mon-equipe` : rôle Discord de l'équipe qui propose.
-- `adversaire` : rôle Discord de l'équipe défiée.
-
-Le fonctionnement de validation est identique à `/mix`.
+Les options sont les memes que `/mix`, avec en plus un niveau attendu quand la commande le propose.
 
 ### `/free`
 
-Crée une proposition ouverte à plusieurs joueurs.
+Propose une session ouverte a plusieurs joueurs.
 
 Options principales :
 
-- `nombre-joueurs` : nombre de joueurs attendus, de 2 à 10.
-- `date` : date au format `JJ/MM/AAAA`.
-- `heure` : heure au format `HH:MM`.
-- `niveau-attendu` : `Débutant`, `Intermédiaire` ou `Confirmé`.
+- `nombre-joueurs` : quota attendu, de 1 a 10 ;
+- `date` : format `JJ/MM/AAAA` ;
+- `heure` : format `HH:MM` ;
+- `niveau-attendu` : `Debutant`, `Intermediaire` ou `Confirme`.
 
-L'auteur est inscrit automatiquement. Le salon privé est créé quand le quota est atteint.
+Les joueurs rejoignent avec reaction. Le salon prive est cree quand le quota est atteint.
 
 ### `/renfort`
 
-Invite un joueur dans un salon privé.
+Invite un joueur dans un salon prive existant.
 
-Options principales :
+Options :
 
-- `joueur` : joueur à inviter.
-- `equipe` : rôle de l'équipe qui demande le renfort.
+- `joueur` : membre Discord a inviter ;
+- `equipe` : role Discord de l'equipe qui demande le renfort.
+
+La commande doit etre lancee par un administrateur ou par une personne autorisee dans le contexte du defi ou de la session.
 
 ## Sessions communautaires
 
 ### `/session`
 
-Crée une session spéciale. La commande est réservée aux administrateurs Discord.
+Cree une session communautaire reservee aux administrateurs.
 
-Options principales :
+Options :
 
-- `type` : `Nocturne`, `Matinale` ou `Événement spécial`.
-- `joueurs` : nombre de joueurs requis, de 1 à 50.
-- `date` : date au format `JJ/MM/AAAA`.
-- `heure` : heure au format `HH:MM`.
-- `description` : informations complémentaires affichées aux joueurs.
+- `type` : `Nocturne`, `Matinale` ou `Evenement special` ;
+- `joueurs` : nombre de joueurs requis ;
+- `date` : format `JJ/MM/AAAA` ;
+- `heure` : format `HH:MM` ;
+- `description` : informations complementaires facultatives.
 
-Les joueurs rejoignent ou quittent la session avec les boutons Discord. Le salon privé est créé quand le quota est atteint.
+Les joueurs rejoignent ou quittent la session avec les boutons `Je participe` et `Me retirer`. Le salon prive est cree quand le quota est atteint.
 
-## Données EVA
+## Donnees EVA
+
+Les commandes suivantes s'appuient sur `eva-cache.db`. Si le cache est vide ou en refresh, JarlBot repond immediatement que les donnees sont en cours de mise a jour.
 
 | Commande | Description |
 | --- | --- |
-| `/stat` | Affiche les statistiques EVA d'un joueur compétitif public. |
-| `/stat-equipe` | Affiche les statistiques EVA d'une équipe. |
-| `/classement` | Affiche un classement EVA local. |
-| `/top` | Affiche le top des joueurs EVA. |
-| `/top-equipe` | Affiche le top des équipes EVA. |
+| `/stat` | Affiche les statistiques EVA d'un joueur competitif public. |
+| `/stat-equipe` | Affiche les statistiques EVA d'une equipe. |
+| `/classement` | Affiche un classement EVA local pour une salle ou une ville. |
+| `/top` | Affiche le top joueurs EVA depuis la major league. |
+| `/top-equipe` | Affiche le top equipes EVA depuis la major league. |
 | `/tournoi` | Affiche les prochains tournois EVA pour un site ou une ville. |
 
-Les commandes EVA s'appuient sur `eva-cache.db`. Si le cache est vide ou en refresh, le bot prévient que les données sont en cours de mise à jour.
+### Badges EVA
+
+JarlBot recupere les badges exposes par EVA et les affiche dans les embeds quand ils sont disponibles :
+
+- badge d'equipe pour `/stat`, `/stat-equipe`, `/top` et `/top-equipe` ;
+- badge de salle, region ou league pour `/classement` ;
+- badge de tournoi ou de circuit pour `/tournoi`.
+
+Discord ne permet pas d'afficher facilement un badge different devant chaque ligne d'un message texte sans emojis serveur. JarlBot affiche donc le badge le plus pertinent dans l'auteur/thumbnail de l'embed.
+
+### `/stat`
+
+`/stat` cherche le joueur dans l'index competitif local, puis lit ses stats via le profil public EVA.
+
+Details importants :
+
+- le KDA affiche est celui de la saison en cours ;
+- les statistiques all-time sont aussi recuperees, mais servent surtout au total de matchs affiche en complement ;
+- si les stats ne sont pas encore en cache, JarlBot tente une recuperation a la demande ;
+- si le profil EVA est prive ou introuvable cote API publique, JarlBot affiche une carte avec les infos competitives connues et le badge d'equipe si possible.
+
+### `/stat-equipe`
+
+Affiche la salle/ville, la league, les points de saison, le bilan victoires/nuls/defaites, la tendance et le roster connu.
+
+### `/classement`
+
+Affiche les classements locaux connus pour une ville ou une salle EVA. Les equipes sont triees par ranking, rang et points.
+
+### `/top`
+
+Affiche les meilleurs joueurs major league selon le KDA de saison en cours parmi les joueurs dont le profil public EVA est exploitable.
+
+### `/top-equipe`
+
+Affiche le top des equipes major league avec points, bilan, difference de score et tendance.
+
+### `/tournoi`
+
+Affiche les prochains tournois locaux d'un site ou d'une ville, avec dates, niveau, statut et prochaines rencontres quand elles sont connues.
 
 ## Mode test
 
 Avec `JARLBOT_MODE=test`, les validations sont volontairement raccourcies :
 
 - un vote suffit pour accepter ou refuser un `/mix` ou `/scrim` ;
-- un participant suffit pour déclencher un `/free` ;
-- une inscription suffit pour déclencher une `/session` ;
-- les rappels et le nettoyage sont accélérés.
+- un participant suffit pour declencher un `/free` ;
+- une inscription suffit pour declencher une `/session` ;
+- les rappels et le nettoyage sont acceleres.
 
-Ce mode est pratique pour vérifier une installation. Il ne doit pas rester actif en production.
+Ce mode est pratique pour verifier une installation. Il ne doit pas rester actif en production.
