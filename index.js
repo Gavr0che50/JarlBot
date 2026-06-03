@@ -311,6 +311,10 @@ client.on('interactionCreate', async (interaction) => {
       }
     }
   } catch (err) {
+    if (err?.code === 10003) {
+      console.warn('⚠️ Interaction ignorée : salon Discord introuvable ou supprimé.');
+      return;
+    }
     console.error('❌ Erreur interaction :', err);
     if (interaction.isRepliable()) {
       const payload = { content: '❌ Une erreur est survenue.', flags: 64 };
@@ -861,8 +865,35 @@ async function gererCommandeStat(interaction) {
     if (current.assists != null) details.push(`Assists: ${current.assists}`);
     if (details.length > 0) content.push(details.join(' | '));
 
-    await interaction.editReply({ content: content.join('\n') });
+    const embed = setEvaEmbedBadge(
+      new EmbedBuilder()
+        .setColor(config.COULEUR_SESSION_OUVERTE)
+        .setDescription(content.join('\n')),
+      data.teamLogoUrl,
+      data.teamName || data.name || 'EVA'
+    );
+    await interaction.editReply({ embeds: [embed] });
   } catch (err) {
+    if (err.isEvaPlayerStatsUnavailable && err.player) {
+      const player = err.player;
+      const lines = [`Stats EVA de **${player.name || joueur}**`];
+      if (player.username) lines.push(`Profil : **${player.username}**`);
+      if (player.teamName) lines.push(`Equipe : **${player.teamName}**`);
+      if (player.locationName || player.leagueName) {
+        lines.push(`Ligue locale : **${[player.locationName, player.leagueName].filter(Boolean).join(' - ')}**`);
+      }
+      lines.push(formatEvaPlayerStatsUnavailableReason(err.message));
+
+      const embed = setEvaEmbedBadge(
+        new EmbedBuilder()
+          .setColor(config.COULEUR_SESSION_OUVERTE)
+          .setDescription(lines.join('\n')),
+        player.teamLogoUrl,
+        player.teamName || player.name || 'EVA'
+      );
+      return interaction.editReply({ embeds: [embed] });
+    }
+
     console.error('❌ Erreur commande /stat :', err);
     await interaction.editReply({ content: `❌ Impossible de récupérer les stats EVA. ${err.message}` });
   }
@@ -919,6 +950,28 @@ function formatTrend(value) {
   if (value === 'hausse') return '🟢 ↗ en hausse';
   if (value === 'baisse') return '🔴 ↘ en baisse';
   return '⚪ → stable';
+}
+
+function setEvaEmbedBadge(embed, badgeUrl, name = 'EVA') {
+  if (!badgeUrl) return embed;
+  return embed
+    .setThumbnail(badgeUrl)
+    .setAuthor({ name, iconURL: badgeUrl });
+}
+
+function firstBadgeUrl(items, key = 'logo_url') {
+  return (items || []).map(item => item?.[key]).find(Boolean) || null;
+}
+
+function formatEvaPlayerStatsUnavailableReason(message) {
+  const normalized = String(message || '').toLowerCase();
+  if (normalized.includes('private')) {
+    return 'Stats indisponibles : le profil EVA public de ce joueur est prive.';
+  }
+  if (normalized.includes('not found') || normalized.includes('introuvable')) {
+    return 'Stats indisponibles : le profil public EVA ne correspond pas a l\'identifiant competitif connu.';
+  }
+  return `Stats indisponibles : ${message}`;
 }
 
 function limiterMessageDiscord(content, maxLength = 1900) {
@@ -1043,7 +1096,14 @@ async function gererCommandeStatEquipe(interaction) {
       teamContent.push(`Roster : ${team.roster.slice(0, Number(config.EVA_TEAM_LINEUP_DISPLAY_LIMIT || 8)).map(player => player.eva_username || player.name).join(', ')}`);
     }
 
-    await interaction.editReply({ content: teamContent.join('\n') });
+    const embed = setEvaEmbedBadge(
+      new EmbedBuilder()
+        .setColor(config.COULEUR_SESSION_OUVERTE)
+        .setDescription(teamContent.join('\n')),
+      team.logo_url,
+      team.name || 'Equipe EVA'
+    );
+    await interaction.editReply({ embeds: [embed] });
   } catch (err) {
     console.error('❌ Erreur commande /stat-equipe :', err);
     await interaction.editReply({ content: `❌ Impossible de récupérer les stats équipe. ${err.message}` });
@@ -1073,7 +1133,14 @@ async function gererCommandeClassement(interaction) {
       }
     }
 
-    await interaction.editReply({ content: limiterMessageDiscord(lines.join('\n')) });
+    const embed = setEvaEmbedBadge(
+      new EmbedBuilder()
+        .setColor(config.COULEUR_SESSION_OUVERTE)
+        .setDescription(limiterMessageDiscord(lines.join('\n'))),
+      firstBadgeUrl(standings.rankings),
+      standings.locationName || 'Classement EVA'
+    );
+    await interaction.editReply({ embeds: [embed] });
   } catch (err) {
     console.error('❌ Erreur commande /classement :', err);
     await interaction.editReply({ content: `❌ Impossible de récupérer le classement local. ${err.message}` });
@@ -1163,7 +1230,14 @@ async function gererCommandeTournoi(interaction) {
       }
     }
 
-    await interaction.editReply({ content: limiterMessageDiscord(lines.join('\n')) });
+    const embed = setEvaEmbedBadge(
+      new EmbedBuilder()
+        .setColor(config.COULEUR_SESSION_OUVERTE)
+        .setDescription(limiterMessageDiscord(lines.join('\n'))),
+      firstBadgeUrl(tournaments),
+      tournaments[0]?.name || 'Tournois EVA'
+    );
+    await interaction.editReply({ embeds: [embed] });
   } catch (err) {
     console.error('❌ Erreur commande /tournoi :', err);
     await interaction.editReply({ content: `❌ Impossible de lire les tournois EVA. ${err.message}` });
@@ -1191,7 +1265,14 @@ async function gererCommandeTop(interaction) {
       );
     });
 
-    await interaction.editReply({ content: lines.join('\n') });
+    const embed = setEvaEmbedBadge(
+      new EmbedBuilder()
+        .setColor(config.COULEUR_SESSION_OUVERTE)
+        .setDescription(lines.join('\n')),
+      firstBadgeUrl(players, 'teamLogoUrl'),
+      players[0]?.teamName || 'Top joueurs EVA'
+    );
+    await interaction.editReply({ embeds: [embed] });
   } catch (err) {
     console.error('❌ Erreur commande /top :', err);
     await interaction.editReply({ content: `❌ Impossible de lire le top joueurs. ${err.message}` });
@@ -1218,7 +1299,14 @@ async function gererCommandeTopEquipe(interaction) {
       );
     });
 
-    await interaction.editReply({ content: lines.join('\n') });
+    const embed = setEvaEmbedBadge(
+      new EmbedBuilder()
+        .setColor(config.COULEUR_SESSION_OUVERTE)
+        .setDescription(lines.join('\n')),
+      firstBadgeUrl(teams, 'logo_url'),
+      teams[0]?.team_name || 'Top equipes EVA'
+    );
+    await interaction.editReply({ embeds: [embed] });
   } catch (err) {
     console.error('❌ Erreur commande /top-equipe :', err);
     await interaction.editReply({ content: `❌ Impossible de lire le top equipes. ${err.message}` });
@@ -1685,3 +1773,4 @@ async function envoyerRappelMPSession(messageId) {
 // 🔑 Connexion
 // ========================================
 client.login(process.env.DISCORD_TOKEN);
+

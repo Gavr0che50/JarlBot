@@ -11,6 +11,7 @@ try {
 
 const DB_FILE = path.join(__dirname, '..', 'eva-cache.db');
 const COMPETITIVE_BASE_URL = (process.env.EVA_COMPETITIVE_API_BASE_URL || config.EVA_COMPETITIVE_API_BASE_URL || 'https://competitive.eva.gg/api').replace(/\/+$/, '');
+const COMPETITIVE_MEDIA_BASE_URL = new URL(COMPETITIVE_BASE_URL).origin;
 const GRAPHQL_URL = process.env.EVA_GRAPHQL_URL || config.EVA_GRAPHQL_URL || 'https://api.eva.gg/graphql';
 const MAJOR_TOURNAMENT_IDS = parseList(process.env.EVA_MAJOR_TOURNAMENT_IDS || config.EVA_MAJOR_TOURNAMENT_IDS || '2385727403616917503');
 const LOCAL_LEAGUES_CIRCUIT_ID = process.env.EVA_LOCAL_LEAGUES_CIRCUIT_ID || config.EVA_LOCAL_LEAGUES_CIRCUIT_ID || '2395738311350114303';
@@ -63,6 +64,39 @@ function splitUsernameBase(username) {
   return String(username || '').split('#')[0] || '';
 }
 
+function getEvaLogoId(source) {
+  const logo = source?.logo ?? source;
+  if (!logo) return null;
+  if (typeof logo === 'string' || typeof logo === 'number') return String(logo);
+  return logo.id ? String(logo.id) : null;
+}
+
+function buildEvaMediaUrl(source, variant = 'logo_medium') {
+  const logoId = getEvaLogoId(source);
+  return logoId ? `${COMPETITIVE_MEDIA_BASE_URL}/media/file/${logoId}/${variant}` : null;
+}
+
+function buildPlayerSummary(player) {
+  if (!player) return null;
+  return {
+    playerId: player.player_user_id,
+    name: player.display_name || splitUsernameBase(player.eva_username) || player.name,
+    username: player.eva_username,
+    teamId: player.team_id,
+    teamName: player.team_name,
+    teamLogoUrl: player.team_logo_url || player.logo_url,
+    leagueName: player.current_ranking_name,
+    locationName: player.current_region_name,
+  };
+}
+
+function createPlayerStatsUnavailableError(player, message) {
+  const err = new Error(message);
+  err.player = buildPlayerSummary(player);
+  err.isEvaPlayerStatsUnavailable = true;
+  return err;
+}
+
 function safeJsonParse(value, fallback = null) {
   if (!value) return fallback;
   try {
@@ -109,6 +143,8 @@ function openDb() {
       season_name TEXT,
       region_id TEXT,
       region_name TEXT,
+      logo_id TEXT,
+      logo_url TEXT,
       entity_type TEXT,
       computed_at TEXT,
       search_key TEXT NOT NULL,
@@ -119,6 +155,8 @@ function openDb() {
       team_id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       search_key TEXT NOT NULL,
+      logo_id TEXT,
+      logo_url TEXT,
       member_count INTEGER,
       current_ranking_id TEXT,
       current_ranking_name TEXT,
@@ -208,6 +246,8 @@ function openDb() {
       season_name TEXT,
       region_name TEXT,
       tier_name TEXT,
+      logo_id TEXT,
+      logo_url TEXT,
       search_key TEXT NOT NULL,
       refreshed_at INTEGER NOT NULL
     );
@@ -253,6 +293,12 @@ function migrateDb(db) {
     if (!columns.has(name)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${definition}`);
   };
 
+  addColumn('eva_v2_rankings', 'logo_id', 'TEXT');
+  addColumn('eva_v2_rankings', 'logo_url', 'TEXT');
+  addColumn('eva_v2_teams', 'logo_id', 'TEXT');
+  addColumn('eva_v2_teams', 'logo_url', 'TEXT');
+  addColumn('eva_v2_tournaments', 'logo_id', 'TEXT');
+  addColumn('eva_v2_tournaments', 'logo_url', 'TEXT');
   addColumn('eva_v2_players', 'stats_error', 'TEXT');
   addColumn('eva_v2_players', 'stats_error_at', 'INTEGER NOT NULL DEFAULT 0');
   addColumn('eva_v2_players', 'stats_retry_after', 'INTEGER NOT NULL DEFAULT 0');
@@ -594,9 +640,9 @@ async function refreshRankingsAndTeams(progressCallback = null) {
   const rankingStmt = db.prepare(`
     INSERT INTO eva_v2_rankings (
       ranking_id, ranking_name, circuit_id, circuit_name, season_id, season_name,
-      region_id, region_name, entity_type, computed_at, search_key, refreshed_at
+      region_id, region_name, logo_id, logo_url, entity_type, computed_at, search_key, refreshed_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(ranking_id) DO UPDATE SET
       ranking_name = excluded.ranking_name,
       circuit_id = excluded.circuit_id,
@@ -605,6 +651,8 @@ async function refreshRankingsAndTeams(progressCallback = null) {
       season_name = excluded.season_name,
       region_id = excluded.region_id,
       region_name = excluded.region_name,
+      logo_id = excluded.logo_id,
+      logo_url = excluded.logo_url,
       entity_type = excluded.entity_type,
       computed_at = excluded.computed_at,
       search_key = excluded.search_key,
@@ -612,11 +660,13 @@ async function refreshRankingsAndTeams(progressCallback = null) {
   `);
 
   const teamStmt = db.prepare(`
-    INSERT INTO eva_v2_teams (team_id, name, search_key, member_count, refreshed_at)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO eva_v2_teams (team_id, name, search_key, logo_id, logo_url, member_count, refreshed_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(team_id) DO UPDATE SET
       name = excluded.name,
       search_key = excluded.search_key,
+      logo_id = excluded.logo_id,
+      logo_url = excluded.logo_url,
       member_count = excluded.member_count,
       refreshed_at = excluded.refreshed_at
   `);
@@ -642,22 +692,29 @@ async function refreshRankingsAndTeams(progressCallback = null) {
       forfeits = excluded.forfeits,
       refreshed_at = excluded.refreshed_at
   `);
+  const teamLogoStmt = db.prepare(`
+    UPDATE eva_v2_teams
+    SET logo_id = ?, logo_url = ?, refreshed_at = ?
+    WHERE team_id = ? AND (logo_id IS NULL OR logo_id = '')
+  `);
 
   const stamp = now();
   db.exec('BEGIN IMMEDIATE');
   try {
-    const filteredTeams = teams.filter(team => team.discipline === 'after_humanity');
-    let tcount = 0;
-    for (const team of filteredTeams) {
-      teamStmt.run(team.id, team.name || '', normalizeKey(team.name), Number(team.memberCount || 0), stamp);
+  const filteredTeams = teams.filter(team => team.discipline === 'after_humanity');
+  let tcount = 0;
+  for (const team of filteredTeams) {
+      const logoId = getEvaLogoId(team);
+      teamStmt.run(team.id, team.name || '', normalizeKey(team.name), logoId, buildEvaMediaUrl(logoId), Number(team.memberCount || 0), stamp);
       tcount += 1;
       if (progressCallback && tcount % 50 === 0) progressCallback({ step: 'teams', status: 'progress', current: tcount, total: filteredTeams.length });
       if (tcount % 20 === 0) await wait(0);
     }
     if (progressCallback) progressCallback({ step: 'teams', status: 'done', current: tcount, total: filteredTeams.length });
 
-    let rcount = 0;
-    for (const ranking of localRankings) {
+  let rcount = 0;
+  for (const ranking of localRankings) {
+      const logoId = getEvaLogoId(ranking.region) || getEvaLogoId(ranking) || getEvaLogoId(ranking.circuit) || getEvaLogoId(ranking.season);
       rankingStmt.run(
         ranking.id,
         ranking.name || '',
@@ -667,6 +724,8 @@ async function refreshRankingsAndTeams(progressCallback = null) {
         ranking.season?.name || null,
         ranking.region?.id || null,
         ranking.region?.name || null,
+        logoId,
+        buildEvaMediaUrl(logoId),
         ranking.entityType || null,
         ranking.computedAt || null,
         normalizeKey(`${ranking.name} ${ranking.region?.name}`),
@@ -695,6 +754,7 @@ async function refreshRankingsAndTeams(progressCallback = null) {
         const teamId = item.entity?.entityId;
         if (!teamId || item.entity?.entityType !== 'team') continue;
         const props = item.properties || {};
+        const itemLogoId = getEvaLogoId(item.entity);
         itemStmt.run(
           ranking.id,
           teamId,
@@ -712,6 +772,7 @@ async function refreshRankingsAndTeams(progressCallback = null) {
           Number(props.forfeits || 0),
           stamp
         );
+        if (itemLogoId) teamLogoStmt.run(itemLogoId, buildEvaMediaUrl(itemLogoId), stamp, teamId);
       }
       db.exec('COMMIT');
       processed += 1;
@@ -1045,8 +1106,9 @@ function findBestPlayer(query) {
   try {
     // Cherche d'abord les candidats pertinents (limit 500)
     const candidates = openDb().prepare(`
-      SELECT p.*, t.current_region_name, t.current_ranking_name, t.current_rank, t.current_position,
-             t.current_points, t.current_season_name, t.trend_label AS team_trend
+    SELECT p.*, t.current_region_name, t.current_ranking_name, t.current_rank, t.current_position,
+      t.current_points, t.current_season_name, t.trend_label AS team_trend,
+      t.logo_url AS team_logo_url
       FROM eva_v2_players p
       LEFT JOIN eva_v2_teams t ON t.team_id = p.team_id
       WHERE p.search_key LIKE ? OR p.eva_username LIKE ?
@@ -1214,14 +1276,17 @@ async function refreshMajorLeague(progressCallback = null) {
       const teamId = participant.team?.id;
       const teamName = participant.team?.name || participant.name;
       if (!teamId) continue;
+      const logoId = getEvaLogoId(participant.team) || getEvaLogoId(participant);
       db.prepare(`
-        INSERT INTO eva_v2_teams (team_id, name, search_key, member_count, refreshed_at)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO eva_v2_teams (team_id, name, search_key, logo_id, logo_url, member_count, refreshed_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(team_id) DO UPDATE SET
-          name = excluded.name,
-          search_key = excluded.search_key,
-          refreshed_at = excluded.refreshed_at
-      `).run(teamId, teamName || '', normalizeKey(teamName), participant.lineup?.length || null, stamp);
+        name = excluded.name,
+        search_key = excluded.search_key,
+        logo_id = excluded.logo_id,
+        logo_url = excluded.logo_url,
+        refreshed_at = excluded.refreshed_at
+      `).run(teamId, teamName || '', normalizeKey(teamName), logoId, buildEvaMediaUrl(logoId), participant.lineup?.length || null, stamp);
 
       const playerStmt = db.prepare(`
         INSERT INTO eva_v2_players (player_user_id, name, search_key, team_id, team_name, is_major, refreshed_at)
@@ -1355,9 +1420,9 @@ async function refreshLocalTournaments(progressCallback = null) {
     INSERT INTO eva_v2_tournaments (
       tournament_id, name, full_name, status, scheduled_start, scheduled_end, timezone,
       organization, location, circuit_id, circuit_name, season_name, region_name, tier_name,
-      search_key, refreshed_at
+      logo_id, logo_url, search_key, refreshed_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(tournament_id) DO UPDATE SET
       name = excluded.name,
       full_name = excluded.full_name,
@@ -1372,17 +1437,24 @@ async function refreshLocalTournaments(progressCallback = null) {
       season_name = excluded.season_name,
       region_name = excluded.region_name,
       tier_name = excluded.tier_name,
+      logo_id = excluded.logo_id,
+      logo_url = excluded.logo_url,
       search_key = excluded.search_key,
       refreshed_at = excluded.refreshed_at
   `);
 
   db.exec('BEGIN IMMEDIATE');
-  try {
-    let count = 0;
-    for (const tournament of tournaments) {
-      tournamentStmt.run(
-        String(tournament.id),
-        tournament.name || tournament.fullName || 'Tournoi EVA',
+    try {
+      let count = 0;
+      for (const tournament of tournaments) {
+        const logoId = getEvaLogoId(tournament) ||
+          getEvaLogoId(tournament.circuitRegion) ||
+          getEvaLogoId(tournament.circuitTier) ||
+          getEvaLogoId(tournament.circuit) ||
+          getEvaLogoId(tournament.circuitSeason);
+        tournamentStmt.run(
+          String(tournament.id),
+          tournament.name || tournament.fullName || 'Tournoi EVA',
         tournament.fullName || null,
         tournament.status || null,
         tournament.scheduledDateStart || null,
@@ -1392,12 +1464,14 @@ async function refreshLocalTournaments(progressCallback = null) {
         tournament.location?.name || tournament.location || null,
         tournament.circuit?.id || null,
         tournament.circuit?.name || null,
-        tournament.circuitSeason?.name || null,
-        tournament.circuitRegion?.name || null,
-        tournament.circuitTier?.name || null,
-        getTournamentSearchKey(tournament),
-        stamp
-      );
+          tournament.circuitSeason?.name || null,
+          tournament.circuitRegion?.name || null,
+          tournament.circuitTier?.name || null,
+          logoId,
+          buildEvaMediaUrl(logoId),
+          getTournamentSearchKey(tournament),
+          stamp
+        );
       count += 1;
       if (progressCallback && count % 25 === 0) progressCallback({ step: 'local_tournaments', status: 'progress', current: count, total: tournaments.length });
     }
@@ -1541,9 +1615,17 @@ async function getEvaPlayerStats(query) {
   if (!player) throw new Error(`Joueur EVA introuvable dans l'index local: ${query}`);
   if (!player.current_stats) {
     if (player.stats_error && Number(player.stats_retry_after || 0) > now()) {
-      throw new Error(player.stats_error);
+      throw createPlayerStatsUnavailableError(player, player.stats_error);
     }
-    throw new Error('Stats EVA pas encore disponibles dans le cache. Reessaie apres le prochain refresh.');
+    try {
+      player = await hydratePlayerStats(player);
+    } catch (err) {
+      recordPlayerStatsError(player, err);
+      throw createPlayerStatsUnavailableError(player, err.message || String(err));
+    }
+    if (!player.current_stats) {
+      throw createPlayerStatsUnavailableError(player, 'Stats EVA pas encore disponibles dans le cache. Reessaie apres le prochain refresh.');
+    }
   }
 
   const current = safeJsonParse(player.current_stats, {});
@@ -1555,6 +1637,7 @@ async function getEvaPlayerStats(query) {
     username: player.eva_username,
     teamId: player.team_id,
     teamName: player.team_name,
+    teamLogoUrl: player.team_logo_url,
     leagueName: player.current_ranking_name,
     locationName: player.current_region_name,
     localRank: player.current_rank || player.current_position || null,
@@ -1651,9 +1734,10 @@ async function getEvaTopPlayers(limit = TOP_LIMIT) {
   try {
     const db = openDb();
     const players = db.prepare(`
-      SELECT *
-      FROM eva_v2_players
-      WHERE is_major = 1 AND current_stats IS NOT NULL
+      SELECT p.*, t.logo_url AS team_logo_url
+      FROM eva_v2_players p
+      LEFT JOIN eva_v2_teams t ON t.team_id = p.team_id
+      WHERE p.is_major = 1 AND p.current_stats IS NOT NULL
       LIMIT ?
     `).all(limit * 3);
 
@@ -1662,10 +1746,11 @@ async function getEvaTopPlayers(limit = TOP_LIMIT) {
         const current = safeJsonParse(player.current_stats, {});
         const previous = safeJsonParse(player.previous_stats, {});
         return {
-          name: player.display_name || splitUsernameBase(player.eva_username) || player.name,
-          username: player.eva_username,
-          teamName: player.team_name,
-          kda: current.kda || 0,
+        name: player.display_name || splitUsernameBase(player.eva_username) || player.name,
+        username: player.eva_username,
+        teamName: player.team_name,
+        teamLogoUrl: player.team_logo_url,
+        kda: current.kda || 0,
           gameCount: current.gameCount || 0,
           trend: trendFromStats(current, previous),
         };
@@ -1682,7 +1767,7 @@ async function getEvaTopPlayers(limit = TOP_LIMIT) {
 async function getEvaTopTeams(limit = TOP_LIMIT) {
   try {
     return openDb().prepare(`
-      SELECT m.*, t.trend_label
+      SELECT m.*, t.trend_label, t.logo_url
       FROM eva_v2_major_team_stats m
       LEFT JOIN eva_v2_teams t ON t.team_id = m.team_id
       ORDER BY m.points DESC, (m.score_for - m.score_against) DESC, m.wins DESC, m.team_name COLLATE NOCASE
