@@ -8,7 +8,8 @@ Ce guide installe JarlBot sur Windows 10 ou 11, configure le bot Discord et vér
 - Node.js 24 ou plus avec npm.
 - Un serveur Discord où tu peux inviter un bot.
 - Une catégorie Discord pour les salons privés.
-- Des rôles Discord pour les équipes si tu utilises `/mix` et `/scrim`.
+- Des rôles Discord pour les équipes.
+- Un bloc note temporaire, pour copier les différents ID
 
 Vérifie Node.js dans PowerShell :
 
@@ -26,8 +27,8 @@ npm -v
 3. Dans `Bot`, crée le bot si besoin.
 4. Dans `Bot > Privileged Gateway Intents`, active `Server Members Intent`.
 5. Active aussi `Message Content Intent` pour une configuration complète.
-6. Copie le token du bot. Il ira dans `.env` sous `DISCORD_TOKEN`.
-7. Dans `General Information`, copie l'Application ID. Il ira dans `.env` sous `CLIENT_ID`.
+6. Copie le token du bot dans le bloc note. Il ira dans `.env` sous `DISCORD_TOKEN`.
+7. Dans `General Information`, copie l'Application ID dans le bloc note. Il ira dans `.env` sous `CLIENT_ID`.
 
 Ne partage jamais le token Discord. Si un token a été exposé, utilise `Reset Token` dans le portail Discord.
 
@@ -45,17 +46,21 @@ Dans `OAuth2 > URL Generator` :
 
 1. Crée une catégorie, par exemple `Matchs`.
 2. Active le mode développeur Discord.
-3. Clique droit sur le serveur, puis copie l'ID : ce sera `GUILD_ID`.
-4. Clique droit sur la catégorie, puis copie l'ID : ce sera `CATEGORIE_DEFIS_ID`.
+3. Clique droit sur le serveur, puis copie l'ID dans ton blocn note : ce sera `GUILD_ID`.
+4. Clique droit sur la catégorie, puis copie l'ID dans ton bloc note : ce sera `CATEGORIE_DEFIS_ID`.
 5. Vérifie que les joueurs ont bien le rôle de leur équipe.
 
 En production, `/mix` et `/scrim` vérifient les rôles pour compter les votes correctement.
 
 ## 4. Installer JarlBot
 
-Depuis Windows :
+Depuis Windows (recommandé) :
+1. Decompresser `Jarlbot.zip` (dans `C/:Jarlbot` par exemple)
+2. Se rendre ou `Jarlbot.zip` a été  décompressé. Puis lancer `JarlBot Launcher.cmd`. 
+3. Sur la page web, entrer les informations précédemment copié dans le bloc-note, selectionner le mode (`Test` ou `Prod`) puis selectionner `Sauvegarder et lancer`. 
+4. Attendre la fin de l'import de la base de donnée (visible dans les logs. Environ 10 minutes) et le bot sera accessible sur Discord. 
 
-Se rendre ou `Jarlbot.zip` a été  décompressé. Puis lancer `JarlBot Launcher.cmd`. Sur la page web, entrer les informlations necessaires, seletionner le mode puis selectionner `Sauvegarder et lancer`. Attendre la fin de l'import de la base de donnée (visible dans les logs) et le bot sera accessible sur Discord.
+Les étapes suivantes peuvent être ignorées et le bloc note fermé sans sauvegarder.
 
 Depuis PowerShell :
 
@@ -71,7 +76,7 @@ npm install
 copy .env.example .env
 ```
 
-## 5. Configurer `.env`
+## 5. Configurer `.env` 
 
 Ouvre `.env` et remplis au minimum :
 
