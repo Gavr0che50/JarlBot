@@ -5,7 +5,7 @@ Ce guide installe JarlBot sur Windows 10 ou 11, configure le bot Discord et vér
 ## Prérequis
 
 - Windows 10 ou 11.
-- Node.js 24 ou plus avec npm.
+- Node.js 24 ou plus avec npm. <https://nodejs.org/dist/v24.16.0/node-v24.16.0-x64.msi> (L'installation est standard, il faut faire suivant, suivant et attendre la fin de l'installation).
 - Un serveur Discord où tu peux inviter un bot.
 - Une catégorie Discord pour les salons privés.
 - Des rôles Discord pour les équipes.
