@@ -53,6 +53,10 @@ En production, `/mix` et `/scrim` vérifient les rôles pour compter les votes c
 
 ## 4. Installer JarlBot
 
+Depuis Windows :
+
+Se rendre ou `Jarlbot.zip` a été  décompressé. Puis lancer `JarlBot Launcher.cmd`. Sur la page web, entrer les informlations necessaires, seletionner le mode puis selectionner `Sauvegarder et lancer`. Attendre la fin de l'import de la base de donnée (visible dans les logs) et le bot sera accessible sur Discord.
+
 Depuis PowerShell :
 
 ```powershell
@@ -61,8 +65,6 @@ cd JarlBot
 npm install
 copy .env.example .env
 ```
-
-Si tu as téléchargé le projet en ZIP depuis GitHub, extrais-le, ouvre PowerShell dans le dossier, puis lance :
 
 ```powershell
 npm install
