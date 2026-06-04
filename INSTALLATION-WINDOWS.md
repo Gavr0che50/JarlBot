@@ -143,6 +143,8 @@ En mode test :
 
 Repasse en `JARLBOT_MODE=prod` avant l'usage réel.
 
+Ci-après, la procédure continue pour les utilisateurs avertis. Ce n'est pas nécessaire.
+
 ## 9. Vérification après installation
 
 1. Lance `npm run check`.
