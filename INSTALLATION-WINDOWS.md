@@ -61,6 +61,8 @@ Depuis Windows (recommandé) :
 
 Les étapes suivantes peuvent être ignorées et le bloc note fermé sans sauvegarder.
 
+ATTENTION : La terminal doit rester ouvert, c'est lui qui pilote le bot.
+
 Depuis PowerShell :
 
 ```powershell
