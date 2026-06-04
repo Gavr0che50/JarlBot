@@ -57,9 +57,9 @@ Depuis Windows (recommandé) :
 1. Decompresser `Jarlbot.zip` (dans `C/:Jarlbot` par exemple)
 2. Se rendre ou `Jarlbot.zip` a été  décompressé. Puis lancer `JarlBot Launcher.cmd`. 
 3. Sur la page web, entrer les informations précédemment copié dans le bloc-note, selectionner le mode (`Test` ou `Prod`) puis selectionner `Sauvegarder et lancer`. 
-4. Attendre la fin de l'import de la base de donnée (visible dans les logs. Environ 10 minutes) et le bot sera accessible sur Discord. 
-
-Les étapes suivantes peuvent être ignorées et le bloc note fermé sans sauvegarder.
+4. Attendre la fin de l'import de la base de donnée (visible dans les logs. Environ 10 minutes) et le bot sera accessible sur Discord.
+5. Fermer le bloc-note sans sauvegarder
+6. Reprendre l'installation à partir de l'étape 8
 
 ATTENTION : La terminal doit rester ouvert, c'est lui qui pilote le bot.
 
