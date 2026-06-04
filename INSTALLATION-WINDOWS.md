@@ -25,10 +25,9 @@ npm -v
 1. Ouvre <https://discord.com/developers/applications>.
 2. Clique sur `New Application`, nomme l'application, puis ouvre-la.
 3. Dans `Bot`, crée le bot si besoin.
-4. Dans `Bot > Privileged Gateway Intents`, active `Server Members Intent`.
-5. Active aussi `Message Content Intent` pour une configuration complète.
-6. Copie le token du bot dans le bloc note. Il ira dans `.env` sous `DISCORD_TOKEN`.
-7. Dans `General Information`, copie l'Application ID dans le bloc note. Il ira dans `.env` sous `CLIENT_ID`.
+4. Dans `Bot > Privileged Gateway Intents`, active `Server Members Intent` et `Message Content Intent`.
+5. Copie le token du bot dans le bloc note. Il ira dans `.env` sous `DISCORD_TOKEN`.
+6. Dans `General Information`, copie l'Application ID dans le bloc note. Il ira dans `.env` sous `CLIENT_ID`.
 
 Ne partage jamais le token Discord. Si un token a été exposé, utilise `Reset Token` dans le portail Discord.
 
