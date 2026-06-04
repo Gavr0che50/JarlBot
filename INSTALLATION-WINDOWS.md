@@ -35,11 +35,11 @@ Ne partage jamais le token Discord. Si un token a été exposé, utilise `Reset 
 
 Dans `OAuth2 > URL Generator` :
 
-1. Coche les scopes `bot` et `applications.commands`.
+1. Coche `bot` et `applications.commands`.
 2. Coche les permissions `Manage Channels`, `Manage Events`, `Send Messages`, `Read Message History`, `Add Reactions`, `Mention Everyone` et `View Channels`.
-3. Ouvre l'URL générée.
+3. Ouvre l'URL générée dans ton navigateur internet.
 4. Invite le bot sur ton serveur.
-5. Place le rôle du bot assez haut dans la hiérarchie Discord pour qu'il puisse gérer les salons et mentionner les rôles nécessaires.
+5. Place le rôle du bot assez haut dans la hiérarchie Discord pour qu'il puisse gérer les salons et mentionner les rôles nécessaires. (Dans Serveur -> Rôle. Place le en dessous des rôles admins).
 
 ## 3. Préparer Discord
 
