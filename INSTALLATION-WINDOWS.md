@@ -1,6 +1,6 @@
 # Installation Windows
 
-Ce guide installe JarlBot sur Windows 10 ou 11, configure le bot Discord et vérifie que les commandes fonctionnent.
+Ce guide installe JarlBot, configure le bot Discord et vérifie que les commandes fonctionnent.
 
 ## Prérequis
 
